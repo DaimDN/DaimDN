@@ -1,10 +1,10 @@
 # 🙌 Hi I am Daim
-##### an Open Source Developer 🔬
+## an Open Source Developer 🔬
 
-## 🎬 Professional Summary
+### 🎬 Professional Summary
 Full-Stack Application Developer with more than 7 years of Web Application Development Experience and 3 years of professional Experience as a full-Stack web developer and IT Trainer.
 
-##  🎁 Facts
+###  🎁 Facts
 
 Here are some ideas to get you started:
 
@@ -18,4 +18,4 @@ Here are some ideas to get you started:
 - 😄 Pronouns: ... fun, energetic
 - ⚡ Fun fact: ... Coding and horse riding
 
-## Looking forward
+## 
