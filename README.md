@@ -1,4 +1,4 @@
-[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/YOUTUBE_VIDEO_ID_HERE/0.jpg)](https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID_HERE)
+<img src="https://avatars1.githubusercontent.com/u/17266803?s=460&u=8786e5e8a42097840135ed023fd91ac27c0201aa&v=4" />
 
 
 <!--
