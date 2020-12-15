@@ -1,4 +1,4 @@
-# 🙌 Hi I am Daim
+# ✨ Hi I am Daim 🎨
 ### Open Source Developer 🔬
 
 ### 🎬 Summary
@@ -6,12 +6,14 @@ Full-Stack Application Developer with more than 7 years of Web Application Devel
 
 ###  🎁 Facts
 
+🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇
+
 Here are some ideas to get you started:
 
 - 🔭 I’m currently working on ... crazy Projects
 - 🎈  Hobbies - Playing intruments, coding and singing
 - 🌱 I’m currently developing... Npm packages 
-- 👯 I’m looking to collaborate on ... Mentoring juniors developers
+- 🥇 I’m looking to collaborate on ... Mentoring juniors developers
 - 🤔 I’m looking for help with ... Professional Careers
 - 💬 Ask me about ... How to code 
 - 📫 How to reach me: ...  Linkedlin
