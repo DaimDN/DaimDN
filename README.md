@@ -1,6 +1,6 @@
 # ✨ Hi I am Daim 🎨
 ### Open Source Developer 🔬
-🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇
+🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇
 ### 🎬 Summary
 Full-Stack Application Developer with more than 7 years of Web Application Development Experience and 3 years of professional Experience as a full-Stack web developer and IT Trainer.
 
