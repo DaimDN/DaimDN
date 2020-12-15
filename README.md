@@ -1,4 +1,4 @@
-# ✨ Hi I am Daim 🎨
+# Hi I am Daim 🎨
 ### Open Source Developer 🔬
 🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇
 ### 🎬 Summary
