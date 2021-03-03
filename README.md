@@ -1,5 +1,6 @@
 # Hi I am Daim 🎨
-
+![Daim's GitHub stats](https://github-readme-stats.vercel.app/api?username=DaimDN&count_private=true&stars=true&include_all_commits=true&show_icons=true&theme=radical)
+![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=DaimDN&layout=compact&theme=radical)
 
 ## ⚡ Technologies
 
@@ -40,8 +41,7 @@
 ### 🎬 Summary
 Full-Stack Application Developer with more than 8 years of Web Application Development Experience and 3 years of professional Experience as a full-Stack web developer and IT Trainer.
 
-![Daim's GitHub stats](https://github-readme-stats.vercel.app/api?username=DaimDN&count_private=true&stars=true&include_all_commits=true&show_icons=true&theme=radical)
-![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=DaimDN&layout=compact&theme=radical)
+
 
 ###  🎁 Facts
 
