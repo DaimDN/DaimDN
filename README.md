@@ -1,9 +1,4 @@
 # Hi I am Daim 🎨
-### Open Source Developer 🔬
-🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇
-### 🎬 Summary
-Full-Stack Application Developer with more than 8 years of Web Application Development Experience and 3 years of professional Experience as a full-Stack web developer and IT Trainer.
-
 ## ⚡ Technologies
 
 ![JavaScript](https://img.shields.io/badge/-JavaScript-black?style=flat-square&logo=javascript)
@@ -38,6 +33,12 @@ Full-Stack Application Developer with more than 8 years of Web Application Devel
 ![CentOS](https://img.shields.io/badge/-Centos-black?style=flat-square&logo=centos)
 ![Ubuntu](https://img.shields.io/badge/-Ubuntu-black?style=flat-square&logo=ubuntu)
 ![Windows](https://img.shields.io/badge/-Windows-black?style=flat-square&logo=windows)
+### Open Source Developer 🔬
+🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇🥇
+### 🎬 Summary
+Full-Stack Application Developer with more than 8 years of Web Application Development Experience and 3 years of professional Experience as a full-Stack web developer and IT Trainer.
+
+
 
 
 ###  🎁 Facts
