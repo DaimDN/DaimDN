@@ -11,19 +11,4 @@ Full-Stack Application Developer with more than 10+ years of Web Application Dev
 
 <p>&nbsp;<img align="center" src="https://github-readme-stats.vercel.app/api?username=daimdn&show_icons=true&locale=en" alt="daimdn" /></p>
 
-<p><img align="center" src="https://github-readme-streak-stats.herokuapp.com/?user=daimdn&" alt="daimdn" /></p>
-
-
-```mermaid
-journey
-	title Learning to Code for coperate projects
-	section Coding for Job Purposes
-		I start coding when I was 14: 1: Me
-		made small scales websites and applcations: 2: Me
-		Ask teachers to help and guide: 3: Me, teacher
-		We build our school website together: 5: Me, teacher
-	section Professional coding
-		Full Stack Application Engineering: 2: Me
-```
-
 
