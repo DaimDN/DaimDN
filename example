@@ -474,3 +474,35 @@ const ChatHistory = ({ chatHistory, currentChatId, onLoadChat }) => {
 };
 
 export default ChatHistory;
+------------------------------
+
+
+
+const Sidebar = ({ chatHistory, currentChatId, onCreateNewChat, onLoadChat }) => {
+  return (
+    <div className="bg-gray-900 w-64 flex flex-col text-white">
+      <div className="p-4">
+        <button
+          onClick={onCreateNewChat}
+          className="w-full flex items-center justify-center gap-2 rounded-md border border-white/20 p-3 text-white hover:bg-gray-700 transition"
+        >
+          <i className="ri-add-line"></i>
+          New chat
+        </button>
+      </div>
+
+      <ChatHistory 
+        chatHistory={chatHistory}
+        currentChatId={currentChatId}
+        onLoadChat={onLoadChat}
+      />
+
+      <div className="border-t border-white/20 p-4">
+        <div className="flex items-center gap-2 rounded-md p-3 hover:bg-gray-700 cursor-pointer">
+          <i className="ri-user-line"></i>
+          <span>User Settings</span>
+        </div>
+      </div>
+    </div>
+  );
+};
