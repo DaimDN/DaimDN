@@ -437,3 +437,40 @@ code {
 }
 
 ---------------------------------------------------
+
+
+history 
+
+const ChatHistory = ({ chatHistory, currentChatId, onLoadChat }) => {
+  return (
+    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      {Object.values(chatHistory)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .map((chat) => {
+          const firstUserMessage = chat.messages.find(msg => msg.isUser)?.content || "New Chat";
+          const preview = firstUserMessage.length > 30 
+            ? firstUserMessage.slice(0, 30) + "..." 
+            : firstUserMessage;
+          const time = new Date(chat.timestamp).toLocaleString();
+
+          return (
+            <div
+              key={chat.id}
+              className={`chat-history-item flex flex-col gap-1 rounded-md p-3 cursor-pointer ${
+                chat.id === currentChatId ? "active" : ""
+              }`}
+              onClick={() => onLoadChat(chat.id)}
+            >
+              <div className="flex items-center gap-2">
+                <i className="ri-chat-1-line"></i>
+                <span className="truncate">{preview}</span>
+              </div>
+              <div className="text-xs text-gray-400">{time}</div>
+            </div>
+          );
+        })}
+    </div>
+  );
+};
+
+export default ChatHistory;
