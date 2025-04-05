@@ -1,0 +1,167 @@
+import { useState } from "react";
+
+const VolumeModal = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [volume, setVolume] = useState(14); // Start at 50% (14/28)
+  const maxVolume = 28;
+
+  const handleVolumeUp = () => {
+    setVolume((prev) => Math.min(prev + 1, maxVolume));
+  };
+
+  const handleVolumeDown = () => {
+    setVolume((prev) => Math.max(prev - 1, 1));
+  };
+
+  // Calculate percentage (rounded to nearest whole number)
+  const volumePercentage = Math.round((volume / maxVolume) * 100);
+  // Circumference for the progress circle (2πr)
+  const circumference = 2 * Math.PI * 40;
+
+  return (
+    <>
+      {/* Button to open modal */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className="fixed bottom-8 right-8 w-16 h-16 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+        aria-label="Open volume control"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-8 w-8"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15.536 8.464a5 5 0 010 7.072M12 6a7.975 7.975 0 015.657 2.343m0 0a7.975 7.975 0 010 11.314m0 0a7.975 7.975 0 01-11.314 0m0 0a7.975 7.975 0 010-11.314m0 0a7.975 7.975 0 00-5.657-2.343"
+          />
+        </svg>
+      </button>
+
+      {/* Modal */}
+      {isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">
+                Volume Control
+              </h2>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+                aria-label="Close volume control"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center">
+              {/* Circular Volume Indicator */}
+              <div className="relative w-48 h-48 mb-6">
+                <svg className="w-full h-full" viewBox="0 0 100 100">
+                  {/* Background circle */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="#e5e7eb"
+                    strokeWidth="8"
+                  />
+                  {/* Filled circle - single moving part */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth="8"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={
+                      circumference - (circumference * volumePercentage) / 100
+                    }
+                    transform="rotate(-90 50 50)"
+                    className="transition-all duration-200 ease-in-out"
+                  />
+                </svg>
+                {/* Percentage in center */}
+                <div className="absolute inset-0 flex items-center justify-center flex-col">
+                  <span className="text-4xl font-bold text-gray-800">
+                    {volumePercentage}%
+                  </span>
+                  <span className="text-sm text-gray-500 mt-1">
+                    Volume Level
+                  </span>
+                </div>
+              </div>
+
+              {/* Control Buttons */}
+              <div className="flex items-center gap-6">
+                <button
+                  onClick={handleVolumeDown}
+                  className="w-14 h-14 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  aria-label="Volume down"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-8 w-8 text-gray-700"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M20 12H4"
+                    />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={handleVolumeUp}
+                  className="w-14 h-14 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  aria-label="Volume up"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-8 w-8 text-gray-700"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default VolumeModal;
