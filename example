@@ -683,3 +683,190 @@ function App() {
 }
 
 export default App;
+-----------------------------------------------
+
+import { useState, useEffect, useRef } from 'react';
+import Sidebar from './components/Sidebar';
+import ChatInput from './components/ChatInput';
+import ChatMessage from './components/ChatMessage';
+import './styles.css';
+
+interface Message {
+  content: string;
+  isUser: boolean;
+}
+
+interface Chat {
+  id: string;
+  timestamp: string;
+  messages: Message[];
+}
+
+function App() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [chatHistory, setChatHistory] = useState<Record<string, Chat>>({});
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    ws.current = new WebSocket("ws://localhost:3000");
+
+    ws.current.onmessage = (event: MessageEvent) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "response") {
+        setMessages(prev => {
+          const lastMessage = prev[prev.length - 1];
+          let updatedMessages: Message[];
+          
+          if (lastMessage && !lastMessage.isUser) {
+            updatedMessages = [
+              ...prev.slice(0, -1),
+              { ...lastMessage, content: lastMessage.content + data.content }
+            ];
+          } else {
+            updatedMessages = [...prev, { content: data.content, isUser: false }];
+          }
+          
+          saveMessages(updatedMessages);
+          return updatedMessages;
+        });
+      } else if (data.type === "done") {
+        setIsLoading(false);
+      } else if (data.type === "error") {
+        const errorMessage: Message = { content: data.message, isUser: false };
+        const updatedMessages = [...messages, errorMessage];
+        setMessages(updatedMessages);
+        setIsLoading(false);
+        saveMessages(updatedMessages);
+      }
+    };
+
+    ws.current.onerror = (error: Event) => {
+      console.error("WebSocket error:", error);
+      setMessages(prev => [...prev, { 
+        content: "Connection error. Please refresh the page.", 
+        isUser: false 
+      }]);
+    };
+
+    return () => {
+      if (ws.current) ws.current.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    const history = JSON.parse(localStorage.getItem('AI_chat_history') || '{}';
+    setChatHistory(history);
+
+    const currentId = localStorage.getItem('AI_current_chat');
+    if (currentId && history[currentId]) {
+      setCurrentChatId(currentId);
+      setMessages(history[currentId].messages);
+    } else {
+      createNewChat();
+    }
+  }, []);
+
+  const saveMessages = (messagesToSave: Message[] = messages) => {
+    if (!currentChatId || messagesToSave.length === 0) return;
+
+    const updatedHistory = { ...chatHistory };
+    updatedHistory[currentChatId] = {
+      id: currentChatId,
+      timestamp: new Date().toISOString(),
+      messages: messagesToSave
+    };
+
+    localStorage.setItem('AI_chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(updatedHistory);
+  };
+
+  const generateChatId = (): string => `chat_${Date.now()}`;
+
+  const createNewChat = (): void => {
+    const newChatId = generateChatId();
+    const welcomeMessage: Message = { 
+      content: "Hello! I'm AI, an AI assistant. How can I help you today?", 
+      isUser: false 
+    };
+    const initialMessages = [welcomeMessage];
+
+    setCurrentChatId(newChatId);
+    setMessages(initialMessages);
+
+    const updatedHistory = { ...chatHistory };
+    updatedHistory[newChatId] = {
+      id: newChatId,
+      timestamp: new Date().toISOString(),
+      messages: initialMessages
+    };
+
+    localStorage.setItem('AI_current_chat', newChatId);
+    localStorage.setItem('AI_chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(updatedHistory);
+  };
+
+  const loadChat = (chatId: string): void => {
+    if (chatHistory[chatId]) {
+      setCurrentChatId(chatId);
+      localStorage.setItem('AI_current_chat', chatId);
+      setMessages(chatHistory[chatId].messages);
+    }
+  };
+
+  const handleSendMessage = (message: string): void => {
+    if (isLoading || !message.trim()) return;
+
+    const newMessage: Message = { content: message, isUser: true };
+    const updatedMessages = [...messages, newMessage];
+    
+    setMessages(updatedMessages);
+    setIsLoading(true);
+    saveMessages(updatedMessages);
+
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: "chat",
+        message: message
+      }));
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-white">
+      <Sidebar 
+        chatHistory={chatHistory} 
+        currentChatId={currentChatId} 
+        onCreateNewChat={createNewChat} 
+        onLoadChat={loadChat} 
+      />
+      
+      <div className="flex-1 flex flex-col">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {messages.map((msg, index) => (
+            <ChatMessage 
+              key={index} 
+              content={msg.content} 
+              isUser={msg.isUser} 
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+        
+        <ChatInput 
+          onSendMessage={handleSendMessage} 
+          isLoading={isLoading} 
+        />
+      </div>
+    </div>
+  );
+}
+
+export default App;
