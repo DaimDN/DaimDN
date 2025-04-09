@@ -1,0 +1,99 @@
+const fs = require('fs');
+const path = require('path');
+const imap = require('imap');
+const { simpleParser } = require('mailparser');
+
+const config = {
+  imap: {
+    user: 'your-email@outlook.com',
+    password: 'your-password',
+    host: 'outlook.office365.com',
+    port: 993,
+    tls: true,
+    tlsOptions: { rejectUnauthorized: false }
+  },
+  mailbox: 'Your-Custom-Folder',
+  csvPath: path.join(__dirname, 'data', 'db.csv')
+};
+
+function fetchEmails() {
+  return new Promise((resolve) => {
+    const imapClient = new imap(config.imap);
+    const emails = [];
+
+    imapClient.once('ready', () => {
+      imapClient.openBox(config.mailbox, false, (err) => {
+        if (err) {
+          console.error(`Error opening mailbox "${config.mailbox}":`, err);
+          imapClient.end();
+          return resolve([]);
+        }
+
+        imapClient.search([
+          'UNSEEN',
+          ['FROM', 'staff@daimdev.com']
+        ], (err, results) => {
+          if (err || !results.length) {
+            imapClient.end();
+            return resolve([]);
+          }
+
+          const fetch = imapClient.fetch(results, { bodies: '' });
+          
+          fetch.on('message', (msg) => {
+            let emailData = {};
+            msg.on('body', (stream) => {
+              simpleParser(stream, (err, mail) => {
+                emailData = {
+                  subject: mail.subject || 'No Subject',
+                  body: mail.text || '',
+                  from: mail.from?.value[0]?.address || 'Unknown',
+                  date: mail.date?.toISOString() || new Date().toISOString()
+                };
+              });
+            });
+            msg.once('end', () => {
+              emails.push(emailData);
+            });
+          });
+
+          fetch.once('end', () => {
+            imapClient.end();
+            resolve(emails);
+          });
+        });
+      });
+    });
+
+    imapClient.once('error', (err) => {
+      console.error('IMAP error:', err);
+      resolve([]);
+    });
+
+    imapClient.connect();
+  });
+}
+
+function appendToCSV(emails) {
+  if (!emails.length) return;
+  
+  if (!fs.existsSync(path.dirname(config.csvPath))) {
+    fs.mkdirSync(path.dirname(config.csvPath), { recursive: true });
+  }
+  
+  const header = !fs.existsSync(config.csvPath) ? 'Subject,Body,From,Date\n' : '';
+  const lines = emails.map(e => 
+    `"${e.subject.replace(/"/g, '""')}","${e.body.replace(/"/g, '""')}","${e.from}","${e.date}"`
+  ).join('\n');
+  
+  fs.appendFileSync(config.csvPath, header + lines + '\n');
+  console.log(`Added ${emails.length} new emails from staff@daimdev.com to CSV`);
+}
+
+async function sync() {
+  const emails = await fetchEmails();
+  appendToCSV(emails);
+}
+
+sync();
+setInterval(sync, 60 * 60 * 1000);
