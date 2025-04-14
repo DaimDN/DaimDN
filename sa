@@ -9,7 +9,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-class EmailRAGTests(unittest.TestCase):
+class fm(unittest.TestCase):
     
     BASE_URL = "http://127.0.0.1:8000"
     SAMPLE_DATA_SIZE = 100
@@ -18,7 +18,9 @@ class EmailRAGTests(unittest.TestCase):
         "Meeting with clients tomorrow",
         "Project deadline extension",
         "New hire onboarding process",
-        "Marketing campaign results"
+        "Marketing campaign results",
+        "did we have any prod issues in jan 2025",
+        "who were OOO in march 2025"
     ]
     
     @classmethod
@@ -26,9 +28,7 @@ class EmailRAGTests(unittest.TestCase):
         Path("test_results").mkdir(exist_ok=True)
         
         try:
-            response = requests.get(f"{cls.BASE_URL}/email_stats")
-            if response.status_code == 404:
-                requests.post(f"{cls.BASE_URL}/preprocess_emails")
+            requests.post(f"{cls.BASE_URL}/preprocess")
         except requests.exceptions.ConnectionError:
             raise ConnectionError(f"API not available at {cls.BASE_URL}. Please start the server.")
     
@@ -38,7 +38,7 @@ class EmailRAGTests(unittest.TestCase):
         for query in self.TEST_QUERIES:
             start_time = time.time()
             response = requests.post(
-                f"{self.BASE_URL}/search_emails",
+                f"{self.BASE_URL}/generate",
                 json={"query": query, "top_k": 10}
             )
             end_time = time.time()
@@ -67,6 +67,8 @@ class EmailRAGTests(unittest.TestCase):
         ground_truth = {
             "Budget planning for Q3": ["email123", "email456", "email789"],
             "Meeting with clients tomorrow": ["email234", "email567"],
+            "did we have any prod issues in jan 2025": ["email345", "email678", "email901"],
+            "who were OOO in march 2025": ["email456", "email789", "email012"]
         }
         
         precision_at_k = {}
@@ -74,7 +76,7 @@ class EmailRAGTests(unittest.TestCase):
         
         for query, relevant_ids in ground_truth.items():
             response = requests.post(
-                f"{self.BASE_URL}/search_emails",
+                f"{self.BASE_URL}/generate",
                 json={"query": query, "top_k": 10}
             )
             self.assertEqual(response.status_code, 200)
@@ -119,7 +121,7 @@ class EmailRAGTests(unittest.TestCase):
         
         for query in self.TEST_QUERIES:
             response = requests.post(
-                f"{self.BASE_URL}/search_emails",
+                f"{self.BASE_URL}/generate",
                 json={"query": query, "top_k": 10}
             )
             self.assertEqual(response.status_code, 200)
@@ -157,7 +159,7 @@ class EmailRAGTests(unittest.TestCase):
     
     def test_conversation_threading_accuracy(self):
         response = requests.post(
-            f"{self.BASE_URL}/search_emails",
+            f"{self.BASE_URL}/generate",
             json={"query": "Project status update", "top_k": 10}
         )
         self.assertEqual(response.status_code, 200)
@@ -190,12 +192,12 @@ class EmailRAGTests(unittest.TestCase):
         concurrent_requests = 5
         response_times = []
         
-        for _ in range(3):  # 3 rounds of testing
+        for _ in range(3):
             start_time = time.time()
             
             for _ in range(concurrent_requests):
                 response = requests.post(
-                    f"{self.BASE_URL}/search_emails",
+                    f"{self.BASE_URL}/generate",
                     json={"query": "Important business update", "top_k": 10}
                 )
                 self.assertEqual(response.status_code, 200)
@@ -222,7 +224,6 @@ class EmailRAGTests(unittest.TestCase):
     def test_dashboard_metrics(self):
         all_metrics = {}
         
-        # Collect all metrics from individual test files
         metric_files = [f for f in os.listdir("test_results") if f.endswith("_metrics.json")]
         for file in metric_files:
             with open(f"test_results/{file}", "r") as f:
@@ -230,7 +231,6 @@ class EmailRAGTests(unittest.TestCase):
                 metric_name = file.replace("_metrics.json", "")
                 all_metrics[metric_name] = metrics
         
-        # Generate dashboard data
         dashboard = {
             "response_time": {
                 "avg": all_metrics.get("response_time", {}).get("avg_response_time_seconds", 0),
