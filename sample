@@ -1,291 +1,347 @@
-import { useState } from "react";
+import React, { useState } from 'react';
+import { 
+  MessageSquare, 
+  User, 
+  Calendar, 
+  Clock, 
+  ChevronDown, 
+  ChevronUp,
+  ExternalLink,
+  AlertTriangle,
+  CheckCircle,
+  Circle,
+  Play,
+  Flag,
+  Tag,
+  Users
+} from 'lucide-react';
 
-export default function LoginComponent() {
-  const [showPassword, setShowPassword] = useState(false);
-  const [selectedDomain, setSelectedDomain] = useState("company.com");
-  const [formData, setFormData] = useState({
-    username: "",
-    password: "",
-    domain: "company.com",
-  });
+const JiraTicketCard = ({ searchData }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const issue = searchData?.issues?.[0];
+  
+  if (!issue) {
+    return (
+      <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg max-w-md">
+        <div className="flex items-center">
+          <AlertTriangle className="w-5 h-5 text-red-400 mr-2" />
+          <p className="text-red-700 text-sm">Ticket not found</p>
+        </div>
+      </div>
+    );
+  }
 
-  const domains = [
-    "company.com",
-    "enterprise.com",
-    "organization.org",
-    "business.net",
-    "corporate.co",
-  ];
+  const fields = issue.fields;
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  // Enhanced helper functions with better visual mapping
+  const getStatusInfo = (status) => {
+    const name = status?.name?.toLowerCase() || '';
+    if (name.includes('done') || name.includes('resolved') || name.includes('closed')) {
+      return { color: 'text-green-600 bg-green-50 border-green-200', icon: CheckCircle, dot: 'bg-green-500' };
+    } else if (name.includes('progress') || name.includes('development')) {
+      return { color: 'text-blue-600 bg-blue-50 border-blue-200', icon: Play, dot: 'bg-blue-500' };
+    } else if (name.includes('review') || name.includes('testing')) {
+      return { color: 'text-orange-600 bg-orange-50 border-orange-200', icon: Clock, dot: 'bg-orange-500' };
+    }
+    return { color: 'text-gray-600 bg-gray-50 border-gray-200', icon: Circle, dot: 'bg-gray-400' };
   };
 
-  const handleDomainChange = (e) => {
-    const domain = e.target.value;
-    setSelectedDomain(domain);
-    setFormData((prev) => ({
-      ...prev,
-      domain: domain,
-    }));
+  const getPriorityInfo = (priority) => {
+    const name = priority?.name?.toLowerCase() || '';
+    if (name === 'highest' || name === 'critical') {
+      return { color: 'text-red-600', icon: '🔴', bg: 'bg-red-50' };
+    } else if (name === 'high') {
+      return { color: 'text-orange-600', icon: '🟠', bg: 'bg-orange-50' };
+    } else if (name === 'medium') {
+      return { color: 'text-yellow-600', icon: '🟡', bg: 'bg-yellow-50' };
+    }
+    return { color: 'text-green-600', icon: '🟢', bg: 'bg-green-50' };
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log("Login attempt:", formData);
-    // Handle login logic here
+  const getTypeIcon = (type) => {
+    const name = type?.name?.toLowerCase() || '';
+    if (name === 'bug') return '🐛';
+    if (name === 'story') return '📖';
+    if (name === 'task') return '✅';
+    if (name === 'epic') return '🚀';
+    return '📋';
   };
 
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 30) return `${diffInDays}d ago`;
+    return date.toLocaleDateString();
   };
+
+  const statusInfo = getStatusInfo(fields.status);
+  const priorityInfo = getPriorityInfo(fields.priority);
+  const StatusIcon = statusInfo.icon;
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen">
-      {/* Left Section */}
-      <div className="bg-blue-500 text-white p-8 md:p-12 md:w-1/2 relative overflow-hidden">
-        <div className="z-10 relative">
-          <h2 className="text-2xl font-bold mb-6">Your Logo</h2>
-          <div className="mt-20 md:mt-32">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Sign in to</h1>
-            <h2 className="text-2xl md:text-3xl font-semibold mb-6">
-              Lorem Ipsum is simply
-            </h2>
-            <p className="max-w-md opacity-90">
-              Lorem Ipsum is simply dummy text of the printing and typesetting
-              industry. Lorem Ipsum has been the industry's standard dummy text
-              ever since the 1500s.
-            </p>
+    <div className="bg-white rounded-xl shadow-lg border border-gray-100 max-w-lg mx-auto overflow-hidden hover:shadow-xl transition-all duration-300">
+      {/* Header with gradient */}
+      <div className="bg-gradient-to-br from-slate-800 via-slate-700 to-slate-600 p-4 text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20"></div>
+        <div className="relative">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">{getTypeIcon(fields.issuetype)}</span>
+              <span className="font-mono text-sm text-slate-300">{issue.key}</span>
+            </div>
+            <button className="text-slate-300 hover:text-white transition-colors">
+              <ExternalLink className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-
-        {/* Decorative Elements */}
-        <div className="absolute right-0 top-1/3 transform translate-x-1/4">
-          <div className="relative w-64 h-64">
-            {/* Neural Network Icon */}
-            <svg
-              className="text-white/20 absolute -top-20 left-10 w-16 h-16"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <circle cx="6" cy="6" r="2" />
-              <circle cx="18" cy="6" r="2" />
-              <circle cx="6" cy="18" r="2" />
-              <circle cx="18" cy="18" r="2" />
-              <line x1="8" y1="7" x2="10" y2="10" />
-              <line x1="16" y1="7" x2="14" y2="10" />
-              <line x1="8" y1="17" x2="10" y2="14" />
-              <line x1="16" y1="17" x2="14" y2="14" />
-            </svg>
-
-            {/* AI Chip Icon */}
-            <svg
-              className="text-white/20 absolute bottom-10 right-30 w-20 h-20"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              viewBox="0 0 24 24"
-            >
-              <rect x="4" y="4" width="16" height="16" rx="2" />
-              <rect x="9" y="9" width="6" height="6" />
-              <line x1="9" y1="1" x2="9" y2="4" />
-              <line x1="15" y1="1" x2="15" y2="4" />
-              <line x1="9" y1="20" x2="9" y2="23" />
-              <line x1="15" y1="20" x2="15" y2="23" />
-              <line x1="20" y1="9" x2="23" y2="9" />
-              <line x1="20" y1="14" x2="23" y2="14" />
-              <line x1="1" y1="9" x2="4" y2="9" />
-              <line x1="1" y1="14" x2="4" y2="14" />
-            </svg>
-
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-              <div className="relative w-40 h-40 -mr-42 mb-10">
-                {/* AI Brain/Circuit Icon */}
-                <svg
-                  className="text-orange-400 w-40 h-40 -right-20 mr-10 transform rotate-12"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
-                  <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
-                  <circle cx="12" cy="12" r="2" />
-                  <circle cx="8" cy="8" r="1" />
-                  <circle cx="16" cy="8" r="1" />
-                  <circle cx="8" cy="16" r="1" />
-                  <circle cx="16" cy="16" r="1" />
-                </svg>
+          
+          <h3 className="font-semibold text-lg leading-tight mb-3 line-clamp-2">
+            {fields.summary || 'Untitled Issue'}
+          </h3>
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color} bg-white/90`}>
+                <div className={`w-2 h-2 rounded-full ${statusInfo.dot} mr-1.5`}></div>
+                {fields.status?.name}
+              </div>
+              
+              <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${priorityInfo.bg} ${priorityInfo.color}`}>
+                <span className="mr-1">{priorityInfo.icon}</span>
+                {fields.priority?.name}
               </div>
             </div>
           </div>
         </div>
-
-        <svg
-          className="text-white/20 absolute bottom-10 left-10 w-24 h-24"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          viewBox="0 0 24 24"
-        >
-          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-        </svg>
       </div>
 
-      {/* Right Section */}
-      <div className="p-8 md:p-12 md:w-1/2 flex items-center justify-center">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8">
-          <div className="text-right mb-4">
-            <span className="text-gray-500">No Account?</span>
-            <a href="#" className="text-blue-500 font-medium ml-1">
-              Sign up
-            </a>
+      {/* Main Content */}
+      <div className="p-4 space-y-4">
+        {/* Description Preview */}
+        <div className="bg-gray-50 rounded-lg p-3">
+          <p className="text-gray-700 text-sm leading-relaxed line-clamp-3">
+            {fields.description || 'No description available'}
+          </p>
+        </div>
+
+        {/* Key Info Grid */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* Assignee */}
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+              {fields.assignee?.displayName?.charAt(0) || '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500">Assignee</p>
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {fields.assignee?.displayName || 'Unassigned'}
+              </p>
+            </div>
           </div>
 
-          <div className="mb-8">
-            <p className="text-gray-600 mb-1">
-              Welcome to <span className="text-blue-500 font-bold">LOREM</span>
-            </p>
-            <h1 className="text-4xl font-bold text-sky-900">LOGIN PANEL</h1>
+          {/* Updated */}
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
+              <Clock className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500">Updated</p>
+              <p className="text-sm font-medium text-gray-900">
+                {formatTimeAgo(fields.updated)}
+              </p>
+            </div>
           </div>
+        </div>
 
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-6">
-              {/* Domain Selector */}
-              <div className="space-y-2">
-                <label
-                  htmlFor="domain"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Select Domain
-                </label>
-                <select
-                  id="domain"
-                  name="domain"
-                  value={selectedDomain}
-                  onChange={handleDomainChange}
-                  className="w-full h-12 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                >
-                  {domains.map((domain) => (
-                    <option key={domain} value={domain}>
-                      {domain}
-                    </option>
+        {/* Labels */}
+        {fields.labels && fields.labels.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {fields.labels.slice(0, 3).map((label, index) => (
+              <span key={index} className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                #{label}
+              </span>
+            ))}
+            {fields.labels.length > 3 && (
+              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                +{fields.labels.length - 3} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Expand/Collapse */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-center space-x-2 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+        >
+          <span>{isExpanded ? 'Less details' : 'More details'}</span>
+          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="space-y-4 pt-4 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+            {/* Full Description */}
+            <div>
+              <h4 className="font-medium text-gray-900 mb-2 flex items-center">
+                <MessageSquare className="w-4 h-4 mr-2 text-gray-600" />
+                Description
+              </h4>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                  {fields.description || 'No description provided'}
+                </p>
+              </div>
+            </div>
+
+            {/* Reporter & Dates */}
+            <div className="grid grid-cols-1 gap-3">
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-sm text-gray-600">Reporter</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {fields.reporter?.displayName || 'Unknown'}
+                </span>
+              </div>
+              
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-sm text-gray-600">Created</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {formatTimeAgo(fields.created)}
+                </span>
+              </div>
+
+              {fields.duedate && (
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-600">Due Date</span>
+                  <span className="text-sm font-medium text-red-600">
+                    {new Date(fields.duedate).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Components */}
+            {fields.components && fields.components.length > 0 && (
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2 flex items-center">
+                  <Tag className="w-4 h-4 mr-2 text-gray-600" />
+                  Components
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {fields.components.map((component, index) => (
+                    <span key={index} className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-lg font-medium">
+                      {component.name}
+                    </span>
                   ))}
-                </select>
-              </div>
-
-              {/* Username/Email Input */}
-              <div className="space-y-2">
-                <label
-                  htmlFor="username"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Enter your username or email address
-                </label>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  placeholder="Username or email address"
-                  className="w-full h-12 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Password Input */}
-              <div className="space-y-2">
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Enter your Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="Password"
-                    className="w-full h-12 px-3 py-2 pr-12 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <button
-                    type="button"
-                    onClick={togglePasswordVisibility}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? (
-                      <svg
-                        className="h-5 w-5"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="h-5 w-5"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                      </svg>
-                    )}
-                  </button>
                 </div>
               </div>
+            )}
 
-              <button
-                type="submit"
-                className="w-full h-12 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-md transition duration-200"
-              >
-                Sign in
-              </button>
-            </div>
-          </form>
-        </div>
+            {/* Fix Versions */}
+            {fields.fixVersions && fields.fixVersions.length > 0 && (
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Fix Version</h4>
+                <div className="flex flex-wrap gap-2">
+                  {fields.fixVersions.map((version, index) => (
+                    <span key={index} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-lg font-medium">
+                      v{version.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Comments Preview */}
+            {fields.comment && fields.comment.total > 0 && (
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2 flex items-center">
+                  <Users className="w-4 h-4 mr-2 text-gray-600" />
+                  Comments ({fields.comment.total})
+                </h4>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-600">
+                    Latest activity {formatTimeAgo(fields.comment.comments?.[0]?.created)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer Action */}
+      <div className="px-4 pb-4">
+        <button className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center space-x-2">
+          <ExternalLink className="w-4 h-4" />
+          <span>Open in Jira</span>
+        </button>
       </div>
     </div>
   );
-}
+};
+
+// Example usage for chatbot
+const App = () => {
+  const sampleData = {
+    issues: [{
+      key: "GTS-487756",
+      fields: {
+        summary: "Implement OAuth 2.0 authentication system with multi-provider support",
+        description: "Design and implement a comprehensive OAuth 2.0 authentication system supporting Google, GitHub, and Azure AD providers.\n\nKey Features:\n• Secure token management\n• Refresh token handling\n• Profile synchronization\n• MFA support",
+        status: { name: "In Progress" },
+        priority: { name: "High" },
+        issuetype: { name: "Story" },
+        assignee: {
+          displayName: "John Doe",
+          emailAddress: "john.doe@company.com"
+        },
+        reporter: {
+          displayName: "Jane Smith",
+          emailAddress: "jane.smith@company.com"
+        },
+        created: "2024-05-15T09:30:00.000+0000",
+        updated: "2024-05-27T14:22:00.000+0000",
+        duedate: "2024-06-15T00:00:00.000+0000",
+        labels: ["authentication", "oauth", "security", "backend", "api"],
+        components: [
+          { name: "Auth Service" },
+          { name: "User Management" }
+        ],
+        fixVersions: [
+          { name: "2.1.0" }
+        ],
+        comment: {
+          total: 5,
+          comments: [
+            {
+              author: { displayName: "Tech Lead" },
+              body: "Please ensure OWASP compliance",
+              created: "2024-05-26T10:15:00.000+0000"
+            }
+          ]
+        }
+      }
+    }]
+  };
+
+  return (
+    <div className="p-6 bg-gray-100 min-h-screen">
+      <div className="max-w-md mx-auto">
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+          <p className="text-sm text-blue-800">
+            🤖 Here's the Jira ticket you requested:
+          </p>
+        </div>
+        <JiraTicketCard searchData={sampleData} />
+      </div>
+    </div>
+  );
+};
+
+export default App;
