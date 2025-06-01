@@ -1,0 +1,147 @@
+const express = require('express');
+const cors = require('cors');
+const fetch = require('node-fetch');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Store Jira configurations (in production, use a database)
+let jiraConfigs = new Map();
+
+// Configure Jira endpoint
+app.post('/api/jira/configure', (req, res) => {
+  const { baseUrl, username, apiToken, sessionId } = req.body;
+  
+  if (!baseUrl) {
+    return res.status(400).json({ error: 'Base URL is required' });
+  }
+
+  // Store config with session ID as key
+  const configId = sessionId || 'default';
+  jiraConfigs.set(configId, {
+    baseUrl: baseUrl.replace(/\/$/, ''), // Remove trailing slash
+    username,
+    apiToken
+  });
+
+  res.json({ success: true, message: 'Jira configuration saved' });
+});
+
+// Search Jira tickets
+app.post('/api/jira/search', async (req, res) => {
+  try {
+    const { jql, maxResults = 50, sessionId } = req.body;
+    
+    if (!jql) {
+      return res.status(400).json({ error: 'JQL query is required' });
+    }
+
+    const configId = sessionId || 'default';
+    const config = jiraConfigs.get(configId);
+    
+    if (!config) {
+      return res.status(400).json({ error: 'Jira not configured. Please configure first.' });
+    }
+
+    const { baseUrl, username, apiToken } = config;
+
+    // Prepare headers
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    // Add authentication if provided
+    if (username && apiToken) {
+      const auth = Buffer.from(`${username}:${apiToken}`).toString('base64');
+      headers['Authorization'] = `Basic ${auth}`;
+    }
+
+    const response = await fetch(`${baseUrl}/rest/api/2/search`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        jql,
+        maxResults,
+        fields: [
+          'summary',
+          'description',
+          'priority',
+          'status',
+          'assignee',
+          'created',
+          'updated',
+          'reporter',
+          'project',
+          'issuetype'
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.errorMessages?.[0] || errorData.message || `HTTP ${response.status}`;
+      } catch {
+        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      }
+      
+      return res.status(response.status).json({ 
+        error: errorMessage,
+        details: errorText 
+      });
+    }
+
+    const data = await response.json();
+    
+    // Format the response
+    const formattedIssues = data.issues.map(issue => ({
+      key: issue.key,
+      summary: issue.fields.summary,
+      description: issue.fields.description?.content?.[0]?.content?.[0]?.text || 
+                   issue.fields.description || 
+                   'No description available',
+      priority: issue.fields.priority?.name || 'None',
+      status: issue.fields.status?.name || 'Unknown',
+      assignee: issue.fields.assignee?.displayName || 'Unassigned',
+      created: issue.fields.created,
+      updated: issue.fields.updated,
+      reporter: issue.fields.reporter?.displayName || 'Unknown',
+      project: issue.fields.project?.key || 'Unknown',
+      issueType: issue.fields.issuetype?.name || 'Task',
+      url: `${baseUrl}/browse/${issue.key}`
+    }));
+
+    res.json({
+      issues: formattedIssues,
+      total: data.total,
+      maxResults: data.maxResults
+    });
+
+  } catch (error) {
+    console.error('Error searching Jira:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Jira API server is running' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Jira API server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+});
+
+module.exports = app;
