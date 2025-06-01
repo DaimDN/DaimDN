@@ -1,0 +1,283 @@
+import React, { useState } from 'react';
+import { Search, Calendar, AlertCircle, Filter, Eye, MoreHorizontal, User, Clock } from 'lucide-react';
+
+const JiraSearchComponent = () => {
+  const [searchFilters, setSearchFilters] = useState({
+    description: '',
+    priority: '',
+    status: '',
+    assignee: '',
+    dateFrom: '',
+    dateTo: '',
+    project: ''
+  });
+
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Mock data for demonstration
+  const mockTickets = [
+    {
+      key: 'PROJ-123',
+      summary: 'Fix authentication bug in login flow',
+      description: 'Users unable to login with valid credentials',
+      priority: 'High',
+      status: 'In Progress',
+      assignee: 'John Doe',
+      created: '2024-05-28',
+      updated: '2024-05-30',
+      reporter: 'Jane Smith',
+      project: 'PROJECT'
+    },
+    {
+      key: 'PROJ-124',
+      summary: 'Implement dark mode toggle',
+      description: 'Add dark mode support to the application',
+      priority: 'Medium',
+      status: 'To Do',
+      assignee: 'Alice Johnson',
+      created: '2024-05-29',
+      updated: '2024-05-29',
+      reporter: 'Bob Wilson',
+      project: 'PROJECT'
+    },
+    {
+      key: 'PROJ-125',
+      summary: 'Database performance optimization',
+      description: 'Optimize slow queries affecting user experience',
+      priority: 'Critical',
+      status: 'Done',
+      assignee: 'Mike Chen',
+      created: '2024-05-25',
+      updated: '2024-05-31',
+      reporter: 'Sarah Davis',
+      project: 'PROJECT'
+    }
+  ];
+
+  const handleInputChange = (field, value) => {
+    setSearchFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSearch = async () => {
+    setLoading(true);
+    
+    // Simulate API call delay
+    setTimeout(() => {
+      // Here you would make the actual Jira API call
+      // const response = await fetch('/rest/api/2/search', { ... });
+      setTickets(mockTickets);
+      setLoading(false);
+    }, 1000);
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority?.toLowerCase()) {
+      case 'critical': return 'text-red-600 bg-red-50 border-red-200';
+      case 'high': return 'text-orange-600 bg-orange-50 border-orange-200';
+      case 'medium': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+      case 'low': return 'text-green-600 bg-green-50 border-green-200';
+      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'done': return 'text-green-700 bg-green-100 border-green-300';
+      case 'in progress': return 'text-blue-700 bg-blue-100 border-blue-300';
+      case 'to do': return 'text-gray-700 bg-gray-100 border-gray-300';
+      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Jira Ticket Search</h1>
+          <p className="text-gray-600">Search and filter your Jira tickets with ease</p>
+        </div>
+
+        {/* Search Card */}
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 mb-8 overflow-hidden">
+          {/* Main Search Bar */}
+          <div className="p-6 border-b border-gray-100">
+            <div className="flex gap-4 items-center">
+              <div className="flex-1 relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                <input
+                  type="text"
+                  placeholder="Search by description, summary, or ticket key..."
+                  value={searchFilters.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                />
+              </div>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200 flex items-center gap-2"
+              >
+                <Filter className="h-5 w-5" />
+                Filters
+              </button>
+              <button
+                onClick={handleSearch}
+                disabled={loading}
+                className="px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-medium"
+              >
+                {loading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                ) : (
+                  <Search className="h-5 w-5" />
+                )}
+                Search
+              </button>
+            </div>
+          </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="p-6 bg-gray-50 border-b border-gray-100">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                  <select
+                    value={searchFilters.priority}
+                    onChange={(e) => handleInputChange('priority', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">All Priorities</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    value={searchFilters.status}
+                    onChange={(e) => handleInputChange('status', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="To Do">To Do</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Done">Done</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                  <input
+                    type="date"
+                    value={searchFilters.dateFrom}
+                    onChange={(e) => handleInputChange('dateFrom', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                  <input
+                    type="date"
+                    value={searchFilters.dateTo}
+                    onChange={(e) => handleInputChange('dateTo', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Results */}
+        {tickets.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-semibold text-gray-900">
+                Search Results ({tickets.length})
+              </h2>
+            </div>
+
+            <div className="grid gap-4">
+              {tickets.map((ticket) => (
+                <div
+                  key={ticket.key}
+                  className="bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:border-blue-200"
+                >
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                          {ticket.key}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getPriorityColor(ticket.priority)}`}>
+                          {ticket.priority}
+                        </span>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(ticket.status)}`}>
+                          {ticket.status}
+                        </span>
+                      </div>
+                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                        <MoreHorizontal className="h-5 w-5 text-gray-400" />
+                      </button>
+                    </div>
+
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      {ticket.summary}
+                    </h3>
+                    
+                    <p className="text-gray-600 mb-4 line-clamp-2">
+                      {ticket.description}
+                    </p>
+
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          <span>{ticket.assignee}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>Created {ticket.created}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          <span>Updated {ticket.updated}</span>
+                        </div>
+                      </div>
+                      <button className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium">
+                        <Eye className="h-4 w-4" />
+                        View Details
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {tickets.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <div className="mx-auto h-24 w-24 text-gray-300 mb-4">
+              <Search className="h-full w-full" />
+            </div>
+            <h3 className="text-xl font-medium text-gray-900 mb-2">No tickets found</h3>
+            <p className="text-gray-600">Try adjusting your search criteria or filters</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default JiraSearchComponent;
