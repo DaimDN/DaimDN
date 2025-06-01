@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,49 +57,30 @@ app.post('/api/jira/search', async (req, res) => {
 
     // Add authentication if provided
     if (username && apiToken) {
-      const auth = Buffer.from(`${username}:${apiToken}`).toString('base64');
-      headers['Authorization'] = `Basic ${auth}`;
+      headers['Authorization'] = `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}`;
     }
 
-    const response = await fetch(`${baseUrl}/rest/api/2/search`, {
-      method: 'POST',
+    const response = await axios.post(`${baseUrl}/rest/api/2/search`, {
+      jql,
+      maxResults,
+      fields: [
+        'summary',
+        'description',
+        'priority',
+        'status',
+        'assignee',
+        'created',
+        'updated',
+        'reporter',
+        'project',
+        'issuetype'
+      ]
+    }, {
       headers,
-      body: JSON.stringify({
-        jql,
-        maxResults,
-        fields: [
-          'summary',
-          'description',
-          'priority',
-          'status',
-          'assignee',
-          'created',
-          'updated',
-          'reporter',
-          'project',
-          'issuetype'
-        ]
-      })
+      timeout: 30000 // 30 second timeout
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage;
-      
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.errorMessages?.[0] || errorData.message || `HTTP ${response.status}`;
-      } catch {
-        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      }
-      
-      return res.status(response.status).json({ 
-        error: errorMessage,
-        details: errorText 
-      });
-    }
-
-    const data = await response.json();
+    const data = response.data;
     
     // Format the response
     const formattedIssues = data.issues.map(issue => ({
@@ -127,10 +108,30 @@ app.post('/api/jira/search', async (req, res) => {
 
   } catch (error) {
     console.error('Error searching Jira:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message 
-    });
+    
+    if (error.response) {
+      // Axios error with response
+      const errorMessage = error.response.data?.errorMessages?.[0] || 
+                           error.response.data?.message || 
+                           `HTTP ${error.response.status}: ${error.response.statusText}`;
+      
+      return res.status(error.response.status).json({ 
+        error: errorMessage,
+        details: error.response.data 
+      });
+    } else if (error.request) {
+      // Network error
+      return res.status(503).json({ 
+        error: 'Unable to connect to Jira server',
+        message: 'Please check your Jira URL and network connection' 
+      });
+    } else {
+      // Other error
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message 
+      });
+    }
   }
 });
 
