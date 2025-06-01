@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { Search, Calendar, AlertCircle, Filter, Eye, MoreHorizontal, User, Clock, Settings } from 'lucide-react';
 
 const JiraSearchComponent = () => {
@@ -14,6 +15,8 @@ const JiraSearchComponent = () => {
 
   const [jiraConfig, setJiraConfig] = useState({
     baseUrl: '',
+    username: '',
+    apiToken: '',
     isConfigured: false
   });
 
@@ -22,6 +25,9 @@ const JiraSearchComponent = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [error, setError] = useState('');
+
+  // API base URL - change this to your Node.js server URL
+  const API_BASE_URL = 'http://localhost:3001/api';
 
   // Build JQL query from filters
   const buildJQLQuery = (filters) => {
@@ -58,28 +64,15 @@ const JiraSearchComponent = () => {
     return conditions.length > 0 ? conditions.join(' AND ') : 'ORDER BY created DESC';
   };
 
-  // Format Jira ticket data
-  const formatTicketData = (issue) => {
-    return {
-      key: issue.key,
-      summary: issue.fields.summary,
-      description: issue.fields.description?.content?.[0]?.content?.[0]?.text || 
-                   issue.fields.description || 
-                   'No description available',
-      priority: issue.fields.priority?.name || 'None',
-      status: issue.fields.status?.name || 'Unknown',
-      assignee: issue.fields.assignee?.displayName || 'Unassigned',
-      created: new Date(issue.fields.created).toLocaleDateString(),
-      updated: new Date(issue.fields.updated).toLocaleDateString(),
-      reporter: issue.fields.reporter?.displayName || 'Unknown',
-      project: issue.fields.project?.key || 'Unknown',
-      issueType: issue.fields.issuetype?.name || 'Task',
-      url: `${jiraConfig.baseUrl}/browse/${issue.key}`
-    };
-  };
-
   const handleInputChange = (field, value) => {
     setSearchFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleConfigChange = (field, value) => {
+    setJiraConfig(prev => ({
       ...prev,
       [field]: value
     }));
@@ -98,55 +91,79 @@ const JiraSearchComponent = () => {
     try {
       const jqlQuery = buildJQLQuery(searchFilters);
       
-      const response = await fetch(`${jiraConfig.baseUrl}/rest/api/2/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          jql: jqlQuery,
-          maxResults: 50,
-          fields: [
-            'summary',
-            'description', 
-            'priority',
-            'status',
-            'assignee',
-            'created',
-            'updated',
-            'reporter',
-            'project',
-            'issuetype'
-          ]
-        })
+      const response = await axios.post(`${API_BASE_URL}/jira/search`, {
+        jql: jqlQuery,
+        maxResults: 50,
+        sessionId: 'default' // You can make this dynamic per user
+      }, {
+        timeout: 30000 // 30 second timeout
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.errorMessages?.[0] || `HTTP ${response.status}: ${response.statusText}`);
-      }
+      // Format tickets for display
+      const formattedTickets = response.data.issues.map(ticket => ({
+        ...ticket,
+        created: new Date(ticket.created).toLocaleDateString(),
+        updated: new Date(ticket.updated).toLocaleDateString()
+      }));
 
-      const data = await response.json();
-      const formattedTickets = data.issues.map(formatTicketData);
       setTickets(formattedTickets);
       
     } catch (error) {
       console.error('Error fetching tickets:', error);
-      setError(`Failed to fetch tickets: ${error.message}`);
+      
+      let errorMessage = 'Failed to fetch tickets';
+      
+      if (error.response) {
+        // Server responded with error status
+        errorMessage = error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`;
+      } else if (error.request) {
+        // Network error
+        errorMessage = 'Unable to connect to server. Please check if the server is running.';
+      } else {
+        // Other error
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
       setTickets([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConfigSave = () => {
-    if (jiraConfig.baseUrl) {
+  const handleConfigSave = async () => {
+    if (!jiraConfig.baseUrl) {
+      setError('Please enter Jira base URL');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/jira/configure`, {
+        baseUrl: jiraConfig.baseUrl,
+        username: jiraConfig.username,
+        apiToken: jiraConfig.apiToken,
+        sessionId: 'default'
+      }, {
+        timeout: 10000 // 10 second timeout for config
+      });
+
       setJiraConfig(prev => ({ ...prev, isConfigured: true }));
       setShowConfig(false);
       setError('');
-    } else {
-      setError('Please enter Jira base URL');
+    } catch (error) {
+      console.error('Configuration error:', error);
+      
+      let errorMessage = 'Configuration failed';
+      
+      if (error.response) {
+        errorMessage = error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`;
+      } else if (error.request) {
+        errorMessage = 'Unable to connect to server. Please check if the server is running.';
+      } else {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
     }
   };
 
@@ -200,17 +217,43 @@ const JiraSearchComponent = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Jira Base URL
+                    Jira Base URL *
                   </label>
                   <input
                     type="url"
                     placeholder="https://your-domain.atlassian.net"
                     value={jiraConfig.baseUrl}
-                    onChange={(e) => setJiraConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                    onChange={(e) => handleConfigChange('baseUrl', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Username (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="your-email@domain.com"
+                    value={jiraConfig.username}
+                    onChange={(e) => handleConfigChange('username', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    API Token (optional)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Your Jira API token"
+                    value={jiraConfig.apiToken}
+                    onChange={(e) => handleConfigChange('apiToken', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    No authentication required - API is publicly accessible
+                    Leave empty for public Jira instances
                   </p>
                 </div>
               </div>
@@ -252,6 +295,7 @@ const JiraSearchComponent = () => {
                   value={searchFilters.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                 />
               </div>
               <button
