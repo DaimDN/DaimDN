@@ -34,7 +34,7 @@ const JiraSearchComponent = () => {
     const conditions = [];
 
     if (filters.description) {
-      conditions.push(`(summary ~ "${filters.description}" OR description ~ "${filters.description}" OR key ~ "${filters.description}")`);
+         conditions.push(`(summary ~ "${filters.description}" OR description ~ "${filters.description}")`);
     }
 
     if (filters.priority) {
