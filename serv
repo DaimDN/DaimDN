@@ -9,205 +9,214 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Store Jira configuration (single instance since no auth required)
-let jiraConfig = null;
+// Store Jira configurations (in production, use a database)
+let jiraConfigs = new Map();
 
 // Configure Jira endpoint
 app.post('/api/jira/configure', (req, res) => {
-  const { baseUrl } = req.body;
+  const { baseUrl, username, apiToken, sessionId } = req.body;
   
   if (!baseUrl) {
     return res.status(400).json({ error: 'Base URL is required' });
   }
 
-  jiraConfig = {
-    baseUrl: baseUrl.replace(/\/$/, '') // Remove trailing slash
-  };
+  // Store config with session ID as key
+  const configId = sessionId || 'default';
+  jiraConfigs.set(configId, {
+    baseUrl: baseUrl.replace(/\/$/, ''), // Remove trailing slash
+    username,
+    apiToken
+  });
 
   res.json({ success: true, message: 'Jira configuration saved' });
 });
 
-// Helper function to handle API errors
-const handleApiError = (error, res) => {
-  if (error.response) {
-    const errorMessage = error.response.data?.errorMessages?.[0] || 
-                         error.response.data?.message || 
-                         `HTTP ${error.response.status}: ${error.response.statusText}`;
-    
-    return res.status(error.response.status).json({ 
-      error: errorMessage,
-      details: error.response.data 
-    });
-  } else if (error.request) {
-    return res.status(503).json({ 
-      error: 'Unable to connect to Jira server',
-      message: 'Please check your Jira URL and network connection' 
-    });
-  } else {
-    return res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message 
-    });
-  }
-};
-
 // Get all projects
-app.post('/api/jira/projects', async (req, res) => {
+app.get('/api/jira/projects', async (req, res) => {
   try {
-    if (!jiraConfig) {
+    const { sessionId } = req.query;
+    const configId = sessionId || 'default';
+    const config = jiraConfigs.get(configId);
+    
+    if (!config) {
       return res.status(400).json({ error: 'Jira not configured. Please configure first.' });
     }
 
-    const { baseUrl } = jiraConfig;
+    const { baseUrl, username, apiToken } = config;
 
+    // Prepare headers
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
+
+    // Add authentication if provided
+    if (username && apiToken) {
+      headers['Authorization'] = `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}`;
+    }
 
     const response = await axios.get(`${baseUrl}/rest/api/2/project`, {
       headers,
       timeout: 30000
     });
 
-    const projects = response.data.map(project => ({
-      id: project.id,
+    const formattedProjects = response.data.map(project => ({
       key: project.key,
       name: project.name,
+      id: project.id,
       projectTypeKey: project.projectTypeKey,
-      description: project.description || '',
       lead: project.lead?.displayName || 'Unknown'
     }));
 
-    res.json({ projects });
+    res.json({ projects: formattedProjects });
 
   } catch (error) {
     console.error('Error fetching projects:', error);
-    handleApiError(error, res);
+    
+    if (error.response) {
+      const errorMessage = error.response.data?.errorMessages?.[0] || 
+                           error.response.data?.message || 
+                           `HTTP ${error.response.status}: ${error.response.statusText}`;
+      
+      return res.status(error.response.status).json({ 
+        error: errorMessage,
+        details: error.response.data 
+      });
+    } else if (error.request) {
+      return res.status(503).json({ 
+        error: 'Unable to connect to Jira server',
+        message: 'Please check your Jira URL and network connection' 
+      });
+    } else {
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message 
+      });
+    }
   }
 });
 
-// Get all boards for a project
-app.post('/api/jira/boards', async (req, res) => {
+// Get sprints for a project or board
+app.get('/api/jira/sprints', async (req, res) => {
   try {
-    const { projectKey } = req.body;
+    const { projectKey, boardId, sessionId } = req.query;
+    const configId = sessionId || 'default';
+    const config = jiraConfigs.get(configId);
     
-    if (!projectKey) {
-      return res.status(400).json({ error: 'Project key is required' });
-    }
-
-    if (!jiraConfig) {
+    if (!config) {
       return res.status(400).json({ error: 'Jira not configured. Please configure first.' });
     }
 
-    const { baseUrl } = jiraConfig;
+    const { baseUrl, username, apiToken } = config;
 
+    // Prepare headers
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
 
-    // Get boards for the project
-    const response = await axios.get(`${baseUrl}/rest/agile/1.0/board`, {
-      headers,
-      params: {
-        projectKeyOrId: projectKey,
-        type: 'scrum' // Focus on scrum boards that have sprints
-      },
-      timeout: 30000
-    });
+    // Add authentication if provided
+    if (username && apiToken) {
+      headers['Authorization'] = `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}`;
+    }
 
-    const boards = response.data.values.map(board => ({
-      id: board.id,
-      name: board.name,
-      type: board.type,
-      projectKey: projectKey
-    }));
-
-    res.json({ boards });
-
-  } catch (error) {
-    console.error('Error fetching boards:', error);
-    handleApiError(error, res);
-  }
-});
-
-// Get all sprints for a board
-app.post('/api/jira/sprints', async (req, res) => {
-  try {
-    const { boardId } = req.body;
+    let sprintsUrl;
     
-    if (!boardId) {
-      return res.status(400).json({ error: 'Board ID is required' });
+    if (boardId) {
+      // If board ID is provided, get sprints for that board
+      sprintsUrl = `${baseUrl}/rest/agile/1.0/board/${boardId}/sprint`;
+    } else if (projectKey) {
+      // First get boards for the project, then get sprints
+      const boardsResponse = await axios.get(
+        `${baseUrl}/rest/agile/1.0/board?projectKeyOrId=${projectKey}`,
+        { headers, timeout: 30000 }
+      );
+      
+      if (boardsResponse.data.values.length === 0) {
+        return res.json({ sprints: [], message: 'No boards found for this project' });
+      }
+      
+      // Use the first board found
+      const firstBoardId = boardsResponse.data.values[0].id;
+      sprintsUrl = `${baseUrl}/rest/agile/1.0/board/${firstBoardId}/sprint`;
+    } else {
+      return res.status(400).json({ error: 'Either projectKey or boardId is required' });
     }
 
-    if (!jiraConfig) {
-      return res.status(400).json({ error: 'Jira not configured. Please configure first.' });
-    }
-
-    const { baseUrl } = jiraConfig;
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    };
-
-    const response = await axios.get(`${baseUrl}/rest/agile/1.0/board/${boardId}/sprint`, {
+    const response = await axios.get(sprintsUrl, {
       headers,
-      params: {
-        maxResults: 100
-      },
       timeout: 30000
     });
 
-    const sprints = response.data.values.map(sprint => ({
+    const formattedSprints = response.data.values.map(sprint => ({
       id: sprint.id,
       name: sprint.name,
       state: sprint.state,
       startDate: sprint.startDate,
       endDate: sprint.endDate,
       completeDate: sprint.completeDate,
-      boardId: boardId
+      goal: sprint.goal || 'No goal set'
     }));
 
-    res.json({ sprints });
+    res.json({ sprints: formattedSprints });
 
   } catch (error) {
     console.error('Error fetching sprints:', error);
-    handleApiError(error, res);
+    
+    if (error.response) {
+      const errorMessage = error.response.data?.errorMessages?.[0] || 
+                           error.response.data?.message || 
+                           `HTTP ${error.response.status}: ${error.response.statusText}`;
+      
+      return res.status(error.response.status).json({ 
+        error: errorMessage,
+        details: error.response.data 
+      });
+    } else if (error.request) {
+      return res.status(503).json({ 
+        error: 'Unable to connect to Jira server',
+        message: 'Please check your Jira URL and network connection' 
+      });
+    } else {
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message 
+      });
+    }
   }
 });
 
-// Get all tickets for a sprint
-app.post('/api/jira/sprint-tickets', async (req, res) => {
+// Get tickets for a specific sprint
+app.get('/api/jira/sprint/:sprintId/issues', async (req, res) => {
   try {
-    const { sprintId } = req.body;
+    const { sprintId } = req.params;
+    const { sessionId } = req.query;
+    const configId = sessionId || 'default';
+    const config = jiraConfigs.get(configId);
     
-    if (!sprintId) {
-      return res.status(400).json({ error: 'Sprint ID is required' });
-    }
-
-    if (!jiraConfig) {
+    if (!config) {
       return res.status(400).json({ error: 'Jira not configured. Please configure first.' });
     }
 
-    const { baseUrl } = jiraConfig;
+    const { baseUrl, username, apiToken } = config;
 
+    // Prepare headers
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
 
+    // Add authentication if provided
+    if (username && apiToken) {
+      headers['Authorization'] = `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}`;
+    }
+
     const response = await axios.get(`${baseUrl}/rest/agile/1.0/sprint/${sprintId}/issue`, {
       headers,
-      params: {
-        maxResults: 100,
-        fields: 'summary,description,priority,status,assignee,created,updated,reporter,project,issuetype,storypoints'
-      },
       timeout: 30000
     });
 
-    const tickets = response.data.issues.map(issue => ({
+    const formattedIssues = response.data.issues.map(issue => ({
       key: issue.key,
       summary: issue.fields.summary,
       description: issue.fields.description?.content?.[0]?.content?.[0]?.text || 
@@ -221,42 +230,69 @@ app.post('/api/jira/sprint-tickets', async (req, res) => {
       reporter: issue.fields.reporter?.displayName || 'Unknown',
       project: issue.fields.project?.key || 'Unknown',
       issueType: issue.fields.issuetype?.name || 'Task',
-      storyPoints: issue.fields.storypoints || 0,
-      url: `${baseUrl}/browse/${issue.key}`,
-      sprintId: sprintId
+      storyPoints: issue.fields.customfield_10016 || 0, // Common story points field
+      url: `${baseUrl}/browse/${issue.key}`
     }));
 
-    res.json({ 
-      tickets,
-      total: response.data.total,
-      sprintId: sprintId
+    res.json({
+      issues: formattedIssues,
+      total: response.data.total
     });
 
   } catch (error) {
-    console.error('Error fetching sprint tickets:', error);
-    handleApiError(error, res);
+    console.error('Error fetching sprint issues:', error);
+    
+    if (error.response) {
+      const errorMessage = error.response.data?.errorMessages?.[0] || 
+                           error.response.data?.message || 
+                           `HTTP ${error.response.status}: ${error.response.statusText}`;
+      
+      return res.status(error.response.status).json({ 
+        error: errorMessage,
+        details: error.response.data 
+      });
+    } else if (error.request) {
+      return res.status(503).json({ 
+        error: 'Unable to connect to Jira server',
+        message: 'Please check your Jira URL and network connection' 
+      });
+    } else {
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message 
+      });
+    }
   }
 });
 
-// Search Jira tickets (enhanced to include project filtering)
+// Search Jira tickets (existing endpoint)
 app.post('/api/jira/search', async (req, res) => {
   try {
-    const { jql, maxResults = 50 } = req.body;
+    const { jql, maxResults = 50, sessionId } = req.body;
     
     if (!jql) {
       return res.status(400).json({ error: 'JQL query is required' });
     }
 
-    if (!jiraConfig) {
+    const configId = sessionId || 'default';
+    const config = jiraConfigs.get(configId);
+    
+    if (!config) {
       return res.status(400).json({ error: 'Jira not configured. Please configure first.' });
     }
 
-    const { baseUrl } = jiraConfig;
+    const { baseUrl, username, apiToken } = config;
 
+    // Prepare headers
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
+
+    // Add authentication if provided
+    if (username && apiToken) {
+      headers['Authorization'] = `Basic ${Buffer.from(`${username}:${apiToken}`).toString('base64')}`;
+    }
 
     const response = await axios.post(`${baseUrl}/rest/api/2/search`, {
       jql,
@@ -272,11 +308,11 @@ app.post('/api/jira/search', async (req, res) => {
         'reporter',
         'project',
         'issuetype',
-        'sprint'
+        'customfield_10016' // Story points
       ]
     }, {
       headers,
-      timeout: 30000
+      timeout: 30000 // 30 second timeout
     });
 
     const data = response.data;
@@ -296,6 +332,7 @@ app.post('/api/jira/search', async (req, res) => {
       reporter: issue.fields.reporter?.displayName || 'Unknown',
       project: issue.fields.project?.key || 'Unknown',
       issueType: issue.fields.issuetype?.name || 'Task',
+      storyPoints: issue.fields.customfield_10016 || 0,
       url: `${baseUrl}/browse/${issue.key}`
     }));
 
@@ -307,7 +344,30 @@ app.post('/api/jira/search', async (req, res) => {
 
   } catch (error) {
     console.error('Error searching Jira:', error);
-    handleApiError(error, res);
+    
+    if (error.response) {
+      // Axios error with response
+      const errorMessage = error.response.data?.errorMessages?.[0] || 
+                           error.response.data?.message || 
+                           `HTTP ${error.response.status}: ${error.response.statusText}`;
+      
+      return res.status(error.response.status).json({ 
+        error: errorMessage,
+        details: error.response.data 
+      });
+    } else if (error.request) {
+      // Network error
+      return res.status(503).json({ 
+        error: 'Unable to connect to Jira server',
+        message: 'Please check your Jira URL and network connection' 
+      });
+    } else {
+      // Other error
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message 
+      });
+    }
   }
 });
 
