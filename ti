@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import axios from 'axios';
-import { Search, Calendar, AlertCircle, Filter, Eye, MoreHorizontal, User, Clock, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Calendar, AlertCircle, Filter, Eye, MoreHorizontal, User, Clock, Settings, FolderOpen, GitBranch, Play, CheckCircle, Pause } from 'lucide-react';
 
 const JiraSearchComponent = () => {
   const [searchFilters, setSearchFilters] = useState({
@@ -21,13 +20,137 @@ const JiraSearchComponent = () => {
   });
 
   const [tickets, setTickets] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [sprints, setSprints] = useState([]);
+  const [selectedProject, setSelectedProject] = useState('');
+  const [selectedSprint, setSelectedSprint] = useState('');
+  const [sprintTickets, setSprintTickets] = useState([]);
+  
   const [loading, setLoading] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [sprintsLoading, setSprintsLoading] = useState(false);
+  const [sprintTicketsLoading, setSprintTicketsLoading] = useState(false);
+  
   const [showFilters, setShowFilters] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showProjects, setShowProjects] = useState(false);
+  const [showSprints, setShowSprints] = useState(false);
+  const [activeTab, setActiveTab] = useState('search'); // 'search', 'projects', 'sprints'
   const [error, setError] = useState('');
 
   // API base URL - change this to your Node.js server URL
   const API_BASE_URL = 'http://localhost:3001/api';
+
+  // Load projects when component mounts and Jira is configured
+  useEffect(() => {
+    if (jiraConfig.isConfigured) {
+      loadProjects();
+    }
+  }, [jiraConfig.isConfigured]);
+
+  // Load sprints when project is selected
+  useEffect(() => {
+    if (selectedProject && jiraConfig.isConfigured) {
+      loadSprints(selectedProject);
+    }
+  }, [selectedProject, jiraConfig.isConfigured]);
+
+  // Load sprint tickets when sprint is selected
+  useEffect(() => {
+    if (selectedSprint && jiraConfig.isConfigured) {
+      loadSprintTickets(selectedSprint);
+    }
+  }, [selectedSprint, jiraConfig.isConfigured]);
+
+  const loadProjects = async () => {
+    setProjectsLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/jira/projects?sessionId=default`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setProjects(data.projects || []);
+      
+    } catch (error) {
+      console.error('Error loading projects:', error);
+      setError('Failed to load projects: ' + error.message);
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  const loadSprints = async (projectKey) => {
+    setSprintsLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/jira/sprints?projectKey=${projectKey}&sessionId=default`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setSprints(data.sprints || []);
+      
+    } catch (error) {
+      console.error('Error loading sprints:', error);
+      setError('Failed to load sprints: ' + error.message);
+      setSprints([]);
+    } finally {
+      setSprintsLoading(false);
+    }
+  };
+
+  const loadSprintTickets = async (sprintId) => {
+    setSprintTicketsLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/jira/sprint/${sprintId}/issues?sessionId=default`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const formattedTickets = data.issues.map(ticket => ({
+        ...ticket,
+        created: new Date(ticket.created).toLocaleDateString(),
+        updated: new Date(ticket.updated).toLocaleDateString()
+      }));
+      
+      setSprintTickets(formattedTickets);
+      
+    } catch (error) {
+      console.error('Error loading sprint tickets:', error);
+      setError('Failed to load sprint tickets: ' + error.message);
+      setSprintTickets([]);
+    } finally {
+      setSprintTicketsLoading(false);
+    }
+  };
 
   // Build JQL query from filters
   const buildJQLQuery = (filters) => {
@@ -91,16 +214,26 @@ const JiraSearchComponent = () => {
     try {
       const jqlQuery = buildJQLQuery(searchFilters);
       
-      const response = await axios.post(`${API_BASE_URL}/jira/search`, {
-        jql: jqlQuery,
-        maxResults: 50,
-        sessionId: 'default' // You can make this dynamic per user
-      }, {
-        timeout: 30000 // 30 second timeout
+      const response = await fetch(`${API_BASE_URL}/jira/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jql: jqlQuery,
+          maxResults: 50,
+          sessionId: 'default'
+        })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
       // Format tickets for display
-      const formattedTickets = response.data.issues.map(ticket => ({
+      const formattedTickets = data.issues.map(ticket => ({
         ...ticket,
         created: new Date(ticket.created).toLocaleDateString(),
         updated: new Date(ticket.updated).toLocaleDateString()
@@ -113,15 +246,10 @@ const JiraSearchComponent = () => {
       
       let errorMessage = 'Failed to fetch tickets';
       
-      if (error.response) {
-        // Server responded with error status
-        errorMessage = error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`;
-      } else if (error.request) {
-        // Network error
-        errorMessage = 'Unable to connect to server. Please check if the server is running.';
-      } else {
-        // Other error
+      if (error.message.includes('HTTP')) {
         errorMessage = error.message;
+      } else {
+        errorMessage = 'Unable to connect to server. Please check if the server is running.';
       }
       
       setError(errorMessage);
@@ -138,32 +266,29 @@ const JiraSearchComponent = () => {
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/jira/configure`, {
-        baseUrl: jiraConfig.baseUrl,
-        username: jiraConfig.username,
-        apiToken: jiraConfig.apiToken,
-        sessionId: 'default'
-      }, {
-        timeout: 10000 // 10 second timeout for config
+      const response = await fetch(`${API_BASE_URL}/jira/configure`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          baseUrl: jiraConfig.baseUrl,
+          username: jiraConfig.username,
+          apiToken: jiraConfig.apiToken,
+          sessionId: 'default'
+        })
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       setJiraConfig(prev => ({ ...prev, isConfigured: true }));
       setShowConfig(false);
       setError('');
     } catch (error) {
       console.error('Configuration error:', error);
-      
-      let errorMessage = 'Configuration failed';
-      
-      if (error.response) {
-        errorMessage = error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`;
-      } else if (error.request) {
-        errorMessage = 'Unable to connect to server. Please check if the server is running.';
-      } else {
-        errorMessage = error.message;
-      }
-      
-      setError(errorMessage);
+      setError('Configuration failed: ' + error.message);
     }
   };
 
@@ -186,13 +311,90 @@ const JiraSearchComponent = () => {
     }
   };
 
+  const getSprintStateIcon = (state) => {
+    switch (state?.toLowerCase()) {
+      case 'active': return <Play className="h-4 w-4 text-green-600" />;
+      case 'closed': return <CheckCircle className="h-4 w-4 text-blue-600" />;
+      case 'future': return <Pause className="h-4 w-4 text-gray-600" />;
+      default: return <GitBranch className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
+  const getSprintStateColor = (state) => {
+    switch (state?.toLowerCase()) {
+      case 'active': return 'text-green-700 bg-green-100 border-green-300';
+      case 'closed': return 'text-blue-700 bg-blue-100 border-blue-300';
+      case 'future': return 'text-gray-700 bg-gray-100 border-gray-300';
+      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  const renderTicketCard = (ticket) => (
+    <div
+      key={ticket.key}
+      className="bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:border-blue-200 overflow-hidden"
+    >
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-medium">
+            {ticket.key}
+          </span>
+          <button className="p-1 hover:bg-gray-100 rounded transition-colors">
+            <MoreHorizontal className="h-4 w-4 text-gray-400" />
+          </button>
+        </div>
+
+        <h3 className="text-sm font-semibold text-gray-900 mb-2 line-clamp-2 h-10">
+          {ticket.summary}
+        </h3>
+        
+        <p className="text-xs text-gray-600 mb-3 line-clamp-3 h-12">
+          {ticket.description}
+        </p>
+
+        <div className="space-y-2 mb-4">
+          <span className={`inline-block px-2 py-1 rounded-md text-xs font-medium border ${getPriorityColor(ticket.priority)}`}>
+            {ticket.priority}
+          </span>
+          <span className={`inline-block px-2 py-1 rounded-md text-xs font-medium border ml-2 ${getStatusColor(ticket.status)}`}>
+            {ticket.status}
+          </span>
+          {ticket.storyPoints > 0 && (
+            <span className="inline-block px-2 py-1 rounded-md text-xs font-medium border ml-2 text-purple-600 bg-purple-50 border-purple-200">
+              {ticket.storyPoints} SP
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-2 text-xs text-gray-500">
+          <div className="flex items-center gap-1">
+            <User className="h-3 w-3" />
+            <span className="truncate">{ticket.assignee}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            <span>{ticket.created}</span>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => window.open(ticket.url, '_blank')}
+          className="w-full mt-3 flex items-center justify-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs py-2 hover:bg-blue-50 rounded transition-colors"
+        >
+          <Eye className="h-3 w-3" />
+          View Details
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-4 mb-4">
-            <h1 className="text-4xl font-bold text-gray-900">Jira Ticket Search</h1>
+            <h1 className="text-4xl font-bold text-gray-900">Jira Management Dashboard</h1>
             <button
               onClick={() => setShowConfig(true)}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-white rounded-lg transition-colors"
@@ -200,12 +402,51 @@ const JiraSearchComponent = () => {
               <Settings className="h-6 w-6" />
             </button>
           </div>
-          <p className="text-gray-600">Search and filter your Jira tickets with ease</p>
+          <p className="text-gray-600">Search tickets, manage projects, and track sprints</p>
           {!jiraConfig.isConfigured && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800">⚠️ Please configure your Jira connection to start searching</p>
+              <p className="text-yellow-800">⚠️ Please configure your Jira connection to start</p>
             </div>
           )}
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-white rounded-xl p-1 shadow-lg border border-gray-100">
+            <button
+              onClick={() => setActiveTab('search')}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'search'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Search className="h-4 w-4 inline mr-2" />
+              Search Tickets
+            </button>
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'projects'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <FolderOpen className="h-4 w-4 inline mr-2" />
+              Projects
+            </button>
+            <button
+              onClick={() => setActiveTab('sprints')}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'sprints'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <GitBranch className="h-4 w-4 inline mr-2" />
+              Sprints
+            </button>
+          </div>
         </div>
 
         {/* Configuration Modal */}
@@ -282,100 +523,287 @@ const JiraSearchComponent = () => {
           </div>
         )}
 
-        {/* Search Card */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 mb-8 overflow-hidden">
-          {/* Main Search Bar */}
-          <div className="p-6 border-b border-gray-100">
-            <div className="flex gap-4 items-center">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <input
-                  type="text"
-                  placeholder="Search by description, summary, or ticket key..."
-                  value={searchFilters.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                />
+        {/* Search Tab */}
+        {activeTab === 'search' && (
+          <>
+            {/* Search Card */}
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 mb-8 overflow-hidden">
+              {/* Main Search Bar */}
+              <div className="p-6 border-b border-gray-100">
+                <div className="flex gap-4 items-center">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <input
+                      type="text"
+                      placeholder="Search by description, summary, or ticket key..."
+                      value={searchFilters.description}
+                      onChange={(e) => handleInputChange('description', e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200 flex items-center gap-2"
+                  >
+                    <Filter className="h-5 w-5" />
+                    Filters
+                  </button>
+                  <button
+                    onClick={handleSearch}
+                    disabled={loading}
+                    className="px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-medium"
+                  >
+                    {loading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <Search className="h-5 w-5" />
+                    )}
+                    Search
+                  </button>
+                </div>
               </div>
+
+              {/* Advanced Filters */}
+              {showFilters && (
+                <div className="p-6 bg-gray-50 border-b border-gray-100">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                      <select
+                        value={searchFilters.priority}
+                        onChange={(e) => handleInputChange('priority', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">All Priorities</option>
+                        <option value="Critical">Critical</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                      <select
+                        value={searchFilters.status}
+                        onChange={(e) => handleInputChange('status', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">All Statuses</option>
+                        <option value="To Do">To Do</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Done">Done</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Project</label>
+                      <select
+                        value={searchFilters.project}
+                        onChange={(e) => handleInputChange('project', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">All Projects</option>
+                        {projects.map(project => (
+                          <option key={project.key} value={project.key}>
+                            {project.name} ({project.key})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                      <input
+                        type="date"
+                        value={searchFilters.dateFrom}
+                        onChange={(e) => handleInputChange('dateFrom', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Search Results */}
+            {tickets.length > 0 && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-semibold text-gray-900">
+                    Search Results ({tickets.length})
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {tickets.map(renderTicketCard)}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Projects Tab */}
+        {activeTab === 'projects' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-semibold text-gray-900">Projects</h2>
               <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200 flex items-center gap-2"
+                onClick={loadProjects}
+                disabled={projectsLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                <Filter className="h-5 w-5" />
-                Filters
-              </button>
-              <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-medium"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <Search className="h-5 w-5" />
-                )}
-                Search
+                {projectsLoading ? 'Loading...' : 'Refresh'}
               </button>
             </div>
+
+            {projectsLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {projects.map((project) => (
+                  <div
+                    key={project.key}
+                    className="bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:border-blue-200 overflow-hidden cursor-pointer"
+                    onClick={() => {
+                      setSelectedProject(project.key);
+                      setActiveTab('sprints');
+                    }}
+                  >
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm font-medium">
+                          {project.key}
+                        </span>
+                        <FolderOpen className="h-6 w-6 text-gray-400" />
+                      </div>
+                      
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {project.name}
+                      </h3>
+                      
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <User className="h-4 w-4" />
+                        <span>Lead: {project.lead}</span>
+                      </div>
+                      
+                      <div className="mt-4 text-xs text-gray-500">
+                        Type: {project.projectTypeKey}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Advanced Filters */}
-          {showFilters && (
-            <div className="p-6 bg-gray-50 border-b border-gray-100">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-                  <select
-                    value={searchFilters.priority}
-                    onChange={(e) => handleInputChange('priority', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">All Priorities</option>
-                    <option value="Critical">Critical</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                  <select
-                    value={searchFilters.status}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="To Do">To Do</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Done">Done</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
-                  <input
-                    type="date"
-                    value={searchFilters.dateFrom}
-                    onChange={(e) => handleInputChange('dateFrom', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
-                  <input
-                    type="date"
-                    value={searchFilters.dateTo}
-                    onChange={(e) => handleInputChange('dateTo', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+        {/* Sprints Tab */}
+        {activeTab === 'sprints' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-900">Sprints</h2>
+                {selectedProject && (
+                  <p className="text-gray-600">Project: {selectedProject}</p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <select
+                  value={selectedProject}
+                  onChange={(e) => setSelectedProject(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select Project</option>
+                  {projects.map(project => (
+                    <option key={project.key} value={project.key}>
+                      {project.name} ({project.key})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
-        </div>
+
+            {sprintsLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sprints.map((sprint) => (
+                  <div
+                    key={sprint.id}
+                    className="bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:border-blue-200 overflow-hidden cursor-pointer"
+                    onClick={() => setSelectedSprint(sprint.id)}
+                  >
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border ${getSprintStateColor(sprint.state)}`}>
+                          {getSprintStateIcon(sprint.state)}
+                          {sprint.state}
+                        </span>
+                        <GitBranch className="h-6 w-6 text-gray-400" />
+                      </div>
+                      
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {sprint.name}
+                      </h3>
+                      
+                      <p className="text-sm text-gray-600 mb-4">
+                        {sprint.goal}
+                      </p>
+                      
+                      <div className="space-y-2 text-xs text-gray-500">
+                        {sprint.startDate && (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>Start: {new Date(sprint.startDate).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        {sprint.endDate && (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>End: {new Date(sprint.endDate).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Sprint Tickets */}
+            {selectedSprint && (
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    Sprint Tickets ({sprintTickets.length})
+                  </h3>
+                  <button
+                    onClick={() => setSelectedSprint('')}
+                    className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+
+                {sprintTicketsLoading ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {sprintTickets.map(renderTicketCard)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -387,82 +815,34 @@ const JiraSearchComponent = () => {
           </div>
         )}
 
-        {/* Results */}
-        {tickets.length > 0 && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-gray-900">
-                Search Results ({tickets.length})
-              </h2>
-            </div>
-
-            {/* 4-Column Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.key}
-                  className="bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:border-blue-200 overflow-hidden"
-                >
-                  <div className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-medium">
-                        {ticket.key}
-                      </span>
-                      <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                        <MoreHorizontal className="h-4 w-4 text-gray-400" />
-                      </button>
-                    </div>
-
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2 line-clamp-2 h-10">
-                      {ticket.summary}
-                    </h3>
-                    
-                    <p className="text-xs text-gray-600 mb-3 line-clamp-3 h-12">
-                      {ticket.description}
-                    </p>
-
-                    <div className="space-y-2 mb-4">
-                      <span className={`inline-block px-2 py-1 rounded-md text-xs font-medium border ${getPriorityColor(ticket.priority)}`}>
-                        {ticket.priority}
-                      </span>
-                      <span className={`inline-block px-2 py-1 rounded-md text-xs font-medium border ml-2 ${getStatusColor(ticket.status)}`}>
-                        {ticket.status}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 text-xs text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        <span className="truncate">{ticket.assignee}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>{ticket.created}</span>
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={() => window.open(ticket.url, '_blank')}
-                      className="w-full mt-3 flex items-center justify-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs py-2 hover:bg-blue-50 rounded transition-colors"
-                    >
-                      <Eye className="h-3 w-3" />
-                      View Details
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Empty State */}
-        {tickets.length === 0 && !loading && (
+        {activeTab === 'search' && tickets.length === 0 && !loading && (
           <div className="text-center py-12">
             <div className="mx-auto h-24 w-24 text-gray-300 mb-4">
               <Search className="h-full w-full" />
             </div>
             <h3 className="text-xl font-medium text-gray-900 mb-2">No tickets found</h3>
             <p className="text-gray-600">Try adjusting your search criteria or filters</p>
+          </div>
+        )}
+
+        {activeTab === 'projects' && projects.length === 0 && !projectsLoading && jiraConfig.isConfigured && (
+          <div className="text-center py-12">
+            <div className="mx-auto h-24 w-24 text-gray-300 mb-4">
+              <FolderOpen className="h-full w-full" />
+            </div>
+            <h3 className="text-xl font-medium text-gray-900 mb-2">No projects found</h3>
+            <p className="text-gray-600">Check your Jira configuration and permissions</p>
+          </div>
+        )}
+
+        {activeTab === 'sprints' && sprints.length === 0 && !sprintsLoading && selectedProject && (
+          <div className="text-center py-12">
+            <div className="mx-auto h-24 w-24 text-gray-300 mb-4">
+              <GitBranch className="h-full w-full" />
+            </div>
+            <h3 className="text-xl font-medium text-gray-900 mb-2">No sprints found</h3>
+            <p className="text-gray-600">This project may not have any sprints or boards configured</p>
           </div>
         )}
       </div>
