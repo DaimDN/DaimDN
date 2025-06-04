@@ -1,0 +1,538 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Play,
+  Pause,
+  Square,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FileText,
+  CheckCircle,
+  XCircle,
+  Clock,
+  RotateCcw,
+  Filter,
+  Search,
+  Settings,
+  Maximize2,
+} from "lucide-react";
+
+const PlaywrightTestRunner = () => {
+  const [tests, setTests] = useState([]);
+  const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [selectedTests, setSelectedTests] = useState(new Set());
+  const [runningTests, setRunningTests] = useState(new Set());
+  const [testResults, setTestResults] = useState(new Map());
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [wsConnected, setWsConnected] = useState(false);
+  const [currentExecution, setCurrentExecution] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const wsRef = useRef(null);
+  const dragRef = useRef(false);
+
+  useEffect(() => {
+    fetchTests();
+    connectWebSocket();
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  const connectWebSocket = () => {
+    wsRef.current = new WebSocket("ws://localhost:3001");
+
+    wsRef.current.onopen = () => {
+      setWsConnected(true);
+      addLog("Connected to test runner", "info");
+    };
+
+    wsRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handleWebSocketMessage(data);
+    };
+
+    wsRef.current.onclose = () => {
+      setWsConnected(false);
+      addLog("Disconnected from test runner", "warning");
+      setTimeout(connectWebSocket, 3000);
+    };
+
+    wsRef.current.onerror = () => {
+      addLog("WebSocket connection error", "error");
+    };
+  };
+
+  const handleWebSocketMessage = (data) => {
+    switch (data.type) {
+      case "test-start":
+        setRunningTests((prev) => new Set([...prev, data.testId]));
+        addLog(`Started: ${data.testName}`, "info");
+        break;
+      case "test-complete":
+        setRunningTests((prev) => {
+          const updated = new Set(prev);
+          updated.delete(data.testId);
+          return updated;
+        });
+        setTestResults(
+          (prev) =>
+            new Map(
+              prev.set(data.testId, {
+                status: data.status,
+                duration: data.duration,
+                error: data.error,
+                screenshots: data.screenshots || [],
+              })
+            )
+        );
+        addLog(
+          `${data.status === "passed" ? "Passed" : "Failed"}: ${
+            data.testName
+          } (${data.duration}ms)`,
+          data.status === "passed" ? "success" : "error"
+        );
+        break;
+      case "execution-complete":
+        setCurrentExecution(null);
+        addLog("Test execution completed", "info");
+        break;
+    }
+  };
+
+  const addLog = (message, type) => {
+    setLogs((prev) => [
+      ...prev.slice(-99),
+      {
+        id: Date.now(),
+        message,
+        type,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
+  };
+
+  const fetchTests = async () => {
+    try {
+      const response = await fetch("http://localhost:3001/api/tests");
+      const data = await response.json();
+      setTests(data);
+      const allFolders = new Set();
+      extractFolders(data, allFolders);
+      setExpandedFolders(allFolders);
+    } catch (error) {
+      addLog("Failed to fetch tests", "error");
+    }
+  };
+
+  const extractFolders = (items, folders, path = "") => {
+    items.forEach((item) => {
+      if (item.type === "folder") {
+        const fullPath = path ? `${path}/${item.name}` : item.name;
+        folders.add(fullPath);
+        extractFolders(item.children, folders, fullPath);
+      }
+    });
+  };
+
+  const runTests = async (testIds) => {
+    if (!wsConnected) {
+      addLog("WebSocket not connected", "error");
+      return;
+    }
+
+    setCurrentExecution({
+      startTime: Date.now(),
+      totalTests: testIds.length,
+      completedTests: 0,
+    });
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "run-tests",
+        testIds: Array.from(testIds),
+      })
+    );
+  };
+
+  const toggleFolder = (path) => {
+    setExpandedFolders((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(path)) {
+        updated.delete(path);
+      } else {
+        updated.add(path);
+      }
+      return updated;
+    });
+  };
+
+  const toggleTestSelection = (testId) => {
+    setSelectedTests((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(testId)) {
+        updated.delete(testId);
+      } else {
+        updated.add(testId);
+      }
+      return updated;
+    });
+  };
+
+  const selectAllInFolder = (items, path = "") => {
+    const testIds = new Set();
+    const collectTestIds = (items, currentPath) => {
+      items.forEach((item) => {
+        if (item.type === "test") {
+          testIds.add(item.id);
+        } else if (item.type === "folder") {
+          collectTestIds(
+            item.children,
+            currentPath ? `${currentPath}/${item.name}` : item.name
+          );
+        }
+      });
+    };
+    collectTestIds(items, path);
+    return testIds;
+  };
+
+  const getTestStatus = (testId) => {
+    if (runningTests.has(testId)) return "running";
+    const result = testResults.get(testId);
+    return result?.status || "pending";
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case "running":
+        return <Clock className="w-4 h-4 text-blue-500 animate-spin" />;
+      case "passed":
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case "failed":
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      default:
+        return (
+          <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+        );
+    }
+  };
+
+  const filterTests = (items) => {
+    return items
+      .filter((item) => {
+        if (item.type === "folder") {
+          const filteredChildren = filterTests(item.children);
+          return filteredChildren.length > 0;
+        }
+
+        const matchesSearch = item.name
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase());
+        const matchesFilter =
+          filterStatus === "all" || getTestStatus(item.id) === filterStatus;
+
+        return matchesSearch && matchesFilter;
+      })
+      .map((item) => {
+        if (item.type === "folder") {
+          return { ...item, children: filterTests(item.children) };
+        }
+        return item;
+      });
+  };
+
+  const renderTestTree = (items, path = "") => {
+    return items.map((item) => {
+      const fullPath = path ? `${path}/${item.name}` : item.name;
+
+      if (item.type === "folder") {
+        const isExpanded = expandedFolders.has(fullPath);
+        const folderTests = selectAllInFolder([item]);
+        const allSelected = Array.from(folderTests).every((id) =>
+          selectedTests.has(id)
+        );
+
+        return (
+          <div key={fullPath} className="select-none">
+            <div className="flex items-center px-2 py-1 hover:bg-gray-50 rounded group">
+              <button
+                onClick={() => toggleFolder(fullPath)}
+                className="flex items-center flex-1 text-left"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-4 h-4 mr-1" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 mr-1" />
+                )}
+                <Folder className="w-4 h-4 mr-2 text-blue-500" />
+                <span className="font-medium text-gray-700">{item.name}</span>
+                <span className="ml-2 text-xs text-gray-500">
+                  ({item.children.length})
+                </span>
+              </button>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={() => {
+                  if (allSelected) {
+                    setSelectedTests((prev) => {
+                      const updated = new Set(prev);
+                      folderTests.forEach((id) => updated.delete(id));
+                      return updated;
+                    });
+                  } else {
+                    setSelectedTests(
+                      (prev) => new Set([...prev, ...folderTests])
+                    );
+                  }
+                }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+            </div>
+            {isExpanded && (
+              <div className="ml-4 border-l border-gray-200 pl-2">
+                {renderTestTree(item.children, fullPath)}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const status = getTestStatus(item.id);
+      const result = testResults.get(item.id);
+
+      return (
+        <div
+          key={item.id}
+          className={`flex items-center px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer group ${
+            selectedTests.has(item.id) ? "bg-blue-50" : ""
+          }`}
+          onClick={() => toggleTestSelection(item.id)}
+        >
+          <input
+            type="checkbox"
+            checked={selectedTests.has(item.id)}
+            onChange={() => {}}
+            className="mr-2"
+          />
+          {getStatusIcon(status)}
+          <FileText className="w-4 h-4 mr-2 text-gray-400" />
+          <span className="flex-1 text-sm text-gray-700">{item.name}</span>
+          {result?.duration && (
+            <span className="text-xs text-gray-500">{result.duration}ms</span>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const handleMouseDown = (e) => {
+    dragRef.current = true;
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleMouseMove = (e) => {
+    if (dragRef.current) {
+      setSidebarWidth(Math.max(200, Math.min(600, e.clientX)));
+    }
+  };
+
+  const handleMouseUp = () => {
+    dragRef.current = false;
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
+  };
+
+  const filteredTests = filterTests(tests);
+
+  return (
+    <div className="h-screen flex bg-gray-50">
+      <div className="flex" style={{ width: `${sidebarWidth}px` }}>
+        <div className="flex-1 bg-white border-r border-gray-200 flex flex-col">
+          <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
+            <h1 className="text-xl font-bold text-white mb-2">
+              Playwright Test Runner
+            </h1>
+            <div className="flex items-center space-x-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  wsConnected ? "bg-green-400" : "bg-red-400"
+                }`}
+              />
+              <span className="text-sm text-white opacity-90">
+                {wsConnected ? "Connected" : "Disconnected"}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-4 border-b border-gray-200 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search tests..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="flex space-x-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Tests</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+              </select>
+              <button
+                onClick={() => setSelectedTests(new Set())}
+                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                onClick={() => runTests(selectedTests)}
+                disabled={selectedTests.size === 0 || !wsConnected}
+                className="flex-1 flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Run Selected ({selectedTests.size})
+              </button>
+              <button
+                onClick={fetchTests}
+                className="px-3 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto p-2">
+            {filteredTests.length === 0 ? (
+              <div className="text-center text-gray-500 mt-8">
+                <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No tests found</p>
+              </div>
+            ) : (
+              renderTestTree(filteredTests)
+            )}
+          </div>
+
+          <div className="p-4 border-t border-gray-200 bg-gray-50">
+            <div className="text-sm text-gray-600">
+              Total:{" "}
+              {tests.reduce(
+                (acc, item) => acc + (item.type === "test" ? 1 : 0),
+                0
+              )}{" "}
+              tests
+            </div>
+            {currentExecution && (
+              <div className="mt-2 text-sm">
+                <div className="flex justify-between text-gray-600">
+                  <span>Running...</span>
+                  <span>
+                    {Math.round(
+                      (Date.now() - currentExecution.startTime) / 1000
+                    )}
+                    s
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${
+                        (currentExecution.completedTests /
+                          currentExecution.totalTests) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="w-1 bg-gray-300 cursor-col-resize hover:bg-gray-400 transition-colors"
+          onMouseDown={handleMouseDown}
+        />
+      </div>
+
+      <div className="flex-1 flex flex-col">
+        <div className="bg-white border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-800">
+              Test Execution Logs
+            </h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setLogs([])}
+                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Clear Logs
+              </button>
+              <button className="p-2 text-gray-600 hover:text-gray-800">
+                <Settings className="w-4 h-4" />
+              </button>
+              <button className="p-2 text-gray-600 hover:text-gray-800">
+                <Maximize2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-gray-900 text-gray-100 p-4 font-mono text-sm">
+          {logs.length === 0 ? (
+            <div className="text-center text-gray-500 mt-12">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-800 flex items-center justify-center">
+                <Play className="w-8 h-8" />
+              </div>
+              <p>No logs yet. Run some tests to see output here.</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {logs.map((log) => (
+                <div key={log.id} className="flex items-start space-x-3">
+                  <span className="text-gray-500 text-xs min-w-[60px]">
+                    {log.timestamp}
+                  </span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded font-medium min-w-[60px] text-center ${
+                      log.type === "success"
+                        ? "bg-green-600 text-white"
+                        : log.type === "error"
+                        ? "bg-red-600 text-white"
+                        : log.type === "warning"
+                        ? "bg-yellow-600 text-white"
+                        : "bg-blue-600 text-white"
+                    }`}
+                  >
+                    {log.type.toUpperCase()}
+                  </span>
+                  <span className="flex-1">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PlaywrightTestRunner;
