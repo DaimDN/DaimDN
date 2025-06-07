@@ -1,0 +1,434 @@
+import os
+import json
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pickle
+from pathlib import Path
+import re
+from typing import List, Dict, Tuple, Optional
+import logging
+
+try:
+    import faiss
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    print("FAISS not available. Please install with: pip install faiss-cpu")
+    exit(1)
+
+class CodeAnalyzer:
+    def __init__(self):
+        self.supported_extensions = {
+            '.java': 'java',
+            '.js': 'javascript',
+            '.jsx': 'javascript',
+            '.ts': 'typescript',
+            '.tsx': 'typescript',
+            '.py': 'python',
+            '.html': 'html',
+            '.css': 'css',
+            '.scss': 'scss',
+            '.php': 'php',
+            '.cpp': 'cpp',
+            '.c': 'c',
+            '.cs': 'csharp',
+            '.go': 'go',
+            '.rs': 'rust'
+        }
+    
+    def extract_features(self, code: str, language: str) -> Dict:
+        features = {
+            'language': language,
+            'length': len(code),
+            'lines': len(code.split('\n')),
+            'functions': self._count_functions(code, language),
+            'classes': self._count_classes(code, language),
+            'imports': self._extract_imports(code, language),
+            'keywords': self._extract_keywords(code, language),
+            'complexity_score': self._calculate_complexity(code),
+            'ui_elements': self._extract_ui_elements(code, language)
+        }
+        return features
+    
+    def _count_functions(self, code: str, language: str) -> int:
+        patterns = {
+            'java': r'(public|private|protected)?\s*(static)?\s*\w+\s+\w+\s*\([^)]*\)\s*\{',
+            'javascript': r'function\s+\w+\s*\([^)]*\)|const\s+\w+\s*=\s*\([^)]*\)\s*=>|\w+\s*:\s*function',
+            'python': r'def\s+\w+\s*\([^)]*\):',
+            'cpp': r'\w+\s+\w+\s*\([^)]*\)\s*\{',
+            'csharp': r'(public|private|protected)?\s*(static)?\s*\w+\s+\w+\s*\([^)]*\)'
+        }
+        pattern = patterns.get(language, r'function|def|method')
+        return len(re.findall(pattern, code, re.IGNORECASE))
+    
+    def _count_classes(self, code: str, language: str) -> int:
+        patterns = {
+            'java': r'(public|private)?\s*class\s+\w+',
+            'javascript': r'class\s+\w+',
+            'python': r'class\s+\w+',
+            'cpp': r'class\s+\w+',
+            'csharp': r'(public|private)?\s*class\s+\w+'
+        }
+        pattern = patterns.get(language, r'class\s+\w+')
+        return len(re.findall(pattern, code, re.IGNORECASE))
+    
+    def _extract_imports(self, code: str, language: str) -> List[str]:
+        patterns = {
+            'java': r'import\s+[\w\.]+;',
+            'javascript': r'import\s+.*from\s+[\'"].*[\'"]|require\s*\([\'"].*[\'"]\)',
+            'python': r'import\s+[\w\.]+|from\s+[\w\.]+\s+import',
+            'csharp': r'using\s+[\w\.]+;'
+        }
+        pattern = patterns.get(language, r'import|include|using|require')
+        imports = re.findall(pattern, code, re.IGNORECASE)
+        return imports[:10]
+    
+    def _extract_keywords(self, code: str, language: str) -> List[str]:
+        keywords = {
+            'java': ['public', 'private', 'static', 'void', 'class', 'interface', 'extends', 'implements'],
+            'javascript': ['function', 'const', 'let', 'var', 'class', 'extends', 'async', 'await'],
+            'python': ['def', 'class', 'import', 'from', 'if', 'else', 'for', 'while', 'try', 'except']
+        }
+        
+        lang_keywords = keywords.get(language, [])
+        found_keywords = []
+        for keyword in lang_keywords:
+            if keyword in code.lower():
+                found_keywords.append(keyword)
+        return found_keywords
+    
+    def _calculate_complexity(self, code: str) -> float:
+        complexity_indicators = ['if', 'else', 'for', 'while', 'case', 'catch', '&&', '||']
+        complexity = 1
+        for indicator in complexity_indicators:
+            complexity += code.lower().count(indicator)
+        return min(complexity / len(code.split('\n')), 10)
+    
+    def _extract_ui_elements(self, code: str, language: str) -> List[str]:
+        ui_patterns = {
+            'javascript': r'<\w+|React\.\w+|useState|useEffect|onClick|className',
+            'java': r'JButton|JPanel|JFrame|ActionListener|Swing|JavaFX',
+            'html': r'<\w+|class=|id=|onclick|style='
+        }
+        
+        ui_elements = []
+        pattern = ui_patterns.get(language, r'button|panel|frame|click|ui|component')
+        matches = re.findall(pattern, code, re.IGNORECASE)
+        return list(set(matches))[:10]
+
+class GraphiteCodeGeneratorFAISS:
+    def __init__(self, model_path: str = None):
+        if model_path is None:
+            model_dir = Path("./codingModel")
+            model_dir.mkdir(exist_ok=True)
+            self.model_path = model_dir / "graphite_coder_faiss_model.pkl"
+            self.faiss_index_path = model_dir / "graphite_coder_faiss.index"
+        else:
+            self.model_path = Path(model_path)
+            self.faiss_index_path = Path(str(model_path).replace('.pkl', '.index'))
+            
+        self.analyzer = CodeAnalyzer()
+        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
+        self.code_database = []
+        self.feature_vectors = None
+        self.faiss_index = None
+        self.is_trained = False
+        
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
+    
+    def _build_faiss_index(self, vectors: np.ndarray) -> None:
+        dimension = vectors.shape[1]
+        
+        if len(vectors) > 50000:
+            nlist = min(4096, len(vectors) // 10)
+            quantizer = faiss.IndexFlatIP(dimension)
+            self.faiss_index = faiss.IndexIVFFlat(quantizer, dimension, nlist)
+            self.faiss_index.train(vectors.astype(np.float32))
+        else:
+            self.faiss_index = faiss.IndexFlatIP(dimension)
+        
+        faiss.normalize_L2(vectors.astype(np.float32))
+        self.faiss_index.add(vectors.astype(np.float32))
+    
+    def _should_exclude_path(self, file_path: Path) -> bool:
+        exclude_dirs = {
+            'node_modules', 'target', 'build', 'dist', 'out', 'bin', 'obj',
+            '.git', '.svn', '.hg', '__pycache__', '.pytest_cache', '.vscode',
+            '.idea', 'venv', 'env', '.env', 'vendor', 'deps', '_build',
+            'gradle', '.gradle', 'maven', '.maven', 'lib', 'libs', 
+            'generated', 'auto-generated', 'resources', 'assets'
+        }
+        
+        exclude_files = {
+            'package-lock.json', 'yarn.lock', 'pom.xml', 'build.gradle',
+            'gradlew', 'gradlew.bat', 'mvnw', 'mvnw.cmd', '.gitignore',
+            '.gitattributes', 'README.md', 'LICENSE', 'CHANGELOG.md'
+        }
+        
+        path_parts = set(file_path.parts)
+        if path_parts.intersection(exclude_dirs):
+            return True
+            
+        if file_path.name in exclude_files:
+            return True
+            
+        if file_path.name.startswith('.') and file_path.suffix not in self.analyzer.supported_extensions:
+            return True
+            
+        return False
+
+    def scan_projects(self, root_paths: List[str] = None) -> None:
+        if root_paths is None:
+            root_paths = ["./codeProjects"]
+        
+        self.logger.info("Scanning project folders...")
+        
+        for root_path in root_paths:
+            root = Path(root_path)
+            if not root.exists():
+                self.logger.warning(f"Path {root_path} does not exist")
+                continue
+                
+            for file_path in root.rglob("*"):
+                if file_path.is_file() and file_path.suffix in self.analyzer.supported_extensions:
+                    if self._should_exclude_path(file_path):
+                        continue
+                        
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            code_content = f.read()
+                        
+                        if len(code_content.strip()) > 50:
+                            language = self.analyzer.supported_extensions[file_path.suffix]
+                            features = self.analyzer.extract_features(code_content, language)
+                            
+                            code_entry = {
+                                'file_path': str(file_path),
+                                'content': code_content,
+                                'features': features,
+                                'language': language,
+                                'project_name': file_path.parts[-3] if len(file_path.parts) > 2 else "unknown"
+                            }
+                            self.code_database.append(code_entry)
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error processing {file_path}: {e}")
+        
+        self.logger.info(f"Scanned {len(self.code_database)} code files")
+    
+    def train_model(self) -> None:
+        if not self.code_database:
+            raise ValueError("No code files found. Run scan_projects first.")
+        
+        self.logger.info("Training GraphiteCoder model with FAISS...")
+        
+        text_data = []
+        for entry in self.code_database:
+            text_features = [
+                entry['content'][:500],
+                ' '.join(entry['features']['imports']),
+                ' '.join(entry['features']['keywords']),
+                ' '.join(entry['features']['ui_elements']),
+                entry['language']
+            ]
+            text_data.append(' '.join(text_features))
+        
+        self.feature_vectors = self.vectorizer.fit_transform(text_data).toarray()
+        self._build_faiss_index(self.feature_vectors)
+        
+        self.is_trained = True
+        self.logger.info("GraphiteCoder model training completed using FAISS")
+    
+    def save_model(self) -> None:
+        if not self.is_trained:
+            raise ValueError("Model not trained. Cannot save.")
+        
+        model_data = {
+            'code_database': self.code_database,
+            'vectorizer': self.vectorizer,
+            'feature_vectors': self.feature_vectors,
+            'is_trained': self.is_trained
+        }
+        
+        with open(self.model_path, 'wb') as f:
+            pickle.dump(model_data, f)
+        
+        faiss.write_index(self.faiss_index, str(self.faiss_index_path))
+        
+        self.logger.info(f"Model saved to {self.model_path}")
+        self.logger.info(f"FAISS index saved to {self.faiss_index_path}")
+    
+    def load_model(self) -> bool:
+        if not self.model_path.exists() or not self.faiss_index_path.exists():
+            return False
+        
+        try:
+            with open(self.model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            self.code_database = model_data['code_database']
+            self.vectorizer = model_data['vectorizer']
+            self.feature_vectors = model_data['feature_vectors']
+            self.is_trained = model_data['is_trained']
+            
+            self.faiss_index = faiss.read_index(str(self.faiss_index_path))
+            
+            self.logger.info(f"Model loaded from {self.model_path}")
+            self.logger.info(f"FAISS index loaded from {self.faiss_index_path}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error loading model: {e}")
+            return False
+    
+    def _search_faiss_index(self, query_vector: np.ndarray, k: int = 5) -> Tuple[np.ndarray, np.ndarray]:
+        query_vector = query_vector.astype(np.float32)
+        faiss.normalize_L2(query_vector)
+        distances, indices = self.faiss_index.search(query_vector, k)
+        return distances[0], indices[0]
+    
+    def _detect_language_from_query(self, query: str) -> str:
+        language_keywords = {
+            'java': ['class', 'public static void main', 'import java', 'extends', 'implements', 'JButton', 'JFrame'],
+            'javascript': ['function', 'const', 'let', 'var', 'React', 'useState', 'onClick', 'npm', 'node'],
+            'python': ['def', 'import', 'from', 'class', 'self', 'pip', 'django', 'flask'],
+            'html': ['<div>', '<button>', '<form>', '<input>', 'html', 'css'],
+            'css': ['color:', 'background:', 'margin:', 'padding:', 'flex', 'grid'],
+            'typescript': ['interface', 'type', 'enum', 'tsx', 'angular'],
+            'cpp': ['#include', 'std::', 'cout', 'cin', 'namespace'],
+            'csharp': ['using System', 'namespace', 'Console.WriteLine', 'public class']
+        }
+        
+        query_lower = query.lower()
+        scores = {}
+        
+        for lang, keywords in language_keywords.items():
+            score = sum(1 for keyword in keywords if keyword.lower() in query_lower)
+            if score > 0:
+                scores[lang] = score
+        
+        if scores:
+            return max(scores, key=scores.get)
+        return None
+
+    def find_similar_code(self, query: str, language: str = None, k: int = 5) -> Dict:
+        if not self.is_trained:
+            raise ValueError("Model not trained. Run train_model first or load existing model.")
+        
+        if not language:
+            language = self._detect_language_from_query(query)
+        
+        query_features = [query]
+        if language:
+            query_features.append(language)
+        
+        query_text = ' '.join(query_features)
+        query_vector = self.vectorizer.transform([query_text]).toarray()
+        
+        distances, indices = self._search_faiss_index(query_vector, k)
+        
+        results = []
+        for i, idx in enumerate(indices):
+            if idx < len(self.code_database):
+                entry = self.code_database[idx]
+                similarity_score = distances[i]
+                
+                results.append({
+                    'file_path': entry['file_path'],
+                    'project_name': entry['project_name'],
+                    'language': entry['language'],
+                    'similarity_score': float(similarity_score),
+                    'full_code': entry['content'],
+                    'features': entry['features']
+                })
+        
+        return {
+            'detected_language': language,
+            'query': query,
+            'results': results
+        }
+    
+    def get_performance_stats(self) -> Dict:
+        return {
+            'total_files': len(self.code_database),
+            'vector_dimension': self.feature_vectors.shape[1] if self.feature_vectors is not None else 0,
+            'memory_usage_mb': self.feature_vectors.nbytes / (1024*1024) if self.feature_vectors is not None else 0,
+            'is_trained': self.is_trained,
+            'model_exists': self.model_path.exists(),
+            'faiss_index_exists': self.faiss_index_path.exists()
+        }
+
+def main():
+    print("=== GraphiteCoder with FAISS ===")
+    
+    generator = GraphiteCodeGeneratorFAISS()
+    
+    if generator.load_model():
+        print("✓ Existing model loaded successfully!")
+        stats = generator.get_performance_stats()
+        print(f"Total Files: {stats['total_files']}")
+        print(f"Vector Dimension: {stats['vector_dimension']}")
+        print(f"Memory Usage: {stats['memory_usage_mb']:.2f} MB")
+    else:
+        print("No existing model found. Creating new model...")
+        
+        code_projects_path = Path("./codeProjects")
+        if not code_projects_path.exists():
+            print(f"Directory {code_projects_path} does not exist. Please create it and add your projects.")
+            return
+        
+        project_paths = [str(item) for item in code_projects_path.iterdir() if item.is_dir()]
+        
+        if not project_paths:
+            print(f"No project folders found in {code_projects_path}.")
+            return
+        
+        print(f"Found {len(project_paths)} project folders")
+        
+        try:
+            generator.scan_projects()
+            generator.train_model()
+            generator.save_model()
+            
+            stats = generator.get_performance_stats()
+            print(f"\n=== Model Created ===")
+            print(f"Total Files: {stats['total_files']}")
+            print(f"Vector Dimension: {stats['vector_dimension']}")
+            print(f"Memory Usage: {stats['memory_usage_mb']:.2f} MB")
+            
+            print("✓ GraphiteCoder model trained and saved successfully!")
+            
+        except Exception as e:
+            print(f"Error during training: {e}")
+            return
+    
+    print("\n=== Testing GraphiteCoder ===")
+    while True:
+        query = input("\nEnter your code request (or 'quit' to exit): ").strip()
+        if query.lower() == 'quit':
+            break
+        
+        try:
+            import time
+            start_time = time.time()
+            result = generator.find_similar_code(query)
+            search_time = time.time() - start_time
+            
+            print(f"\n--- Results ({search_time:.3f}s using FAISS) ---")
+            print(f"Detected Language: {result['detected_language'] or 'Unknown'}")
+            print(f"Query: {result['query']}")
+            
+            for i, code in enumerate(result['results'], 1):
+                print(f"\n{i}. {Path(code['file_path']).name}")
+                print(f"   Similarity: {code['similarity_score']:.3f}")
+                print(f"   Language: {code['language']}")
+                print(f"   Project: {code['project_name']}")
+                print(f"\n   === CODE ===")
+                print(code['full_code'])
+                print("-" * 50)
+                
+        except Exception as e:
+            print(f"Error: {e}")
+
+if __name__ == "__main__":
+    main()
