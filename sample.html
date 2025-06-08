@@ -1,0 +1,764 @@
+import os
+import json
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pickle
+from pathlib import Path
+import re
+from typing import List, Dict, Tuple, Optional
+import logging
+import time
+
+try:
+    import faiss
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    print("FAISS not available. Please install with: pip install faiss-cpu")
+    exit(1)
+
+class CodeAnalyzer:
+    def __init__(self):
+        self.supported_extensions = {
+            '.java': 'java',
+            '.js': 'javascript',
+            '.jsx': 'javascript',
+            '.ts': 'typescript',
+            '.tsx': 'typescript',
+            '.json': 'json',
+            '.py': 'python',
+            '.cpp': 'cpp',
+            '.c': 'c',
+            '.cs': 'csharp',
+            '.php': 'php',
+            '.go': 'go',
+            '.rb': 'ruby'
+        }
+    
+    def extract_features(self, code: str, language: str) -> Dict:
+        features = {
+            'language': language,
+            'length': len(code),
+            'lines': len(code.split('\n')),
+            'methods': self._extract_methods(code, language),
+            'classes': self._extract_classes(code, language),
+            'imports': self._extract_imports(code, language),
+            'annotations': self._extract_annotations(code, language),
+            'controllers': self._extract_controllers(code, language),
+            'endpoints': self._extract_endpoints(code, language),
+            'interfaces': self._extract_interfaces(code, language),
+            'types': self._extract_types(code, language),
+            'json_keys': self._extract_json_keys(code, language)
+        }
+        features['all_text'] = self._extract_searchable_text(code, language, features)
+        return features
+    
+    def _extract_methods(self, code: str, language: str) -> List[Dict]:
+        methods = []
+        if language == 'java':
+            pattern = r'(@\w+[\s\S]*?)?(public|private|protected)?\s*(static)?\s*(\w+(?:<[^>]+>)?)\s+(\w+)\s*\(([^)]*)\)\s*(?:throws\s+[^{]+)?\{'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                annotations = re.findall(r'@\w+(?:\([^)]*\))?', match.group(1) or '')
+                method_info = {
+                    'name': match.group(5),
+                    'return_type': match.group(4),
+                    'visibility': match.group(2) or 'package',
+                    'static': bool(match.group(3)),
+                    'parameters': match.group(6),
+                    'annotations': annotations,
+                    'full_signature': match.group(0)
+                }
+                methods.append(method_info)
+        elif language in ['javascript', 'typescript']:
+            js_patterns = [
+                r'(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)',
+                r'(\w+)\s*:\s*(?:async\s+)?function\s*\(([^)]*)\)',
+                r'(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>',
+                r'(?:export\s+)?const\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>',
+                r'(?:public|private|protected)?\s*(?:async\s+)?(\w+)\s*\(([^)]*)\)\s*(?::\s*[^{]+)?\s*\{'
+            ]
+            for pattern in js_patterns:
+                matches = re.finditer(pattern, code, re.MULTILINE)
+                for match in matches:
+                    method_info = {
+                        'name': match.group(1),
+                        'parameters': match.group(2),
+                        'full_signature': match.group(0)
+                    }
+                    methods.append(method_info)
+        elif language == 'python':
+            pattern = r'(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*[^:]+)?:'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                method_info = {
+                    'name': match.group(1),
+                    'parameters': match.group(2),
+                    'full_signature': match.group(0)
+                }
+                methods.append(method_info)
+        return methods
+    
+    def _extract_classes(self, code: str, language: str) -> List[Dict]:
+        classes = []
+        if language == 'java':
+            pattern = r'(@\w+[\s\S]*?)?(public|private|protected)?\s*(abstract|final)?\s*class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([^{]+))?\s*\{'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                annotations = re.findall(r'@\w+(?:\([^)]*\))?', match.group(1) or '')
+                class_info = {
+                    'name': match.group(4),
+                    'visibility': match.group(2) or 'package',
+                    'modifiers': [m for m in [match.group(3)] if m],
+                    'extends': match.group(5),
+                    'implements': [i.strip() for i in (match.group(6) or '').split(',') if i.strip()],
+                    'annotations': annotations
+                }
+                classes.append(class_info)
+        elif language in ['javascript', 'typescript']:
+            pattern = r'(?:export\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([^{]+))?\s*\{'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                class_info = {
+                    'name': match.group(1),
+                    'extends': match.group(2),
+                    'implements': [i.strip() for i in (match.group(3) or '').split(',') if i.strip()]
+                }
+                classes.append(class_info)
+        elif language == 'python':
+            pattern = r'class\s+(\w+)(?:\(([^)]+)\))?:'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                class_info = {
+                    'name': match.group(1),
+                    'inherits': [i.strip() for i in (match.group(2) or '').split(',') if i.strip()]
+                }
+                classes.append(class_info)
+        return classes
+    
+    def _extract_imports(self, code: str, language: str) -> List[str]:
+        imports = []
+        if language == 'java':
+            pattern = r'import\s+(?:static\s+)?([^;]+);'
+            imports = re.findall(pattern, code)
+        elif language in ['javascript', 'typescript']:
+            patterns = [
+                r'import\s+(?:\{[^}]+\}|\w+|(?:\{[^}]+\}\s*,\s*\w+))\s+from\s+[\'"]([^\'"]+)[\'"]',
+                r'import\s+[\'"]([^\'"]+)[\'"]',
+                r'const\s+(?:\{[^}]+\}|\w+)\s*=\s*require\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)',
+                r'require\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)'
+            ]
+            for pattern in patterns:
+                matches = re.findall(pattern, code)
+                imports.extend(matches)
+        elif language == 'python':
+            patterns = [
+                r'from\s+([^\s]+)\s+import',
+                r'import\s+([^\s,]+)'
+            ]
+            for pattern in patterns:
+                matches = re.findall(pattern, code)
+                imports.extend(matches)
+        return list(set(imports))
+    
+    def _extract_annotations(self, code: str, language: str) -> List[str]:
+        annotations = []
+        if language == 'java':
+            pattern = r'@(\w+)(?:\([^)]*\))?'
+            annotations = re.findall(pattern, code)
+        elif language in ['javascript', 'typescript']:
+            pattern = r'@(\w+)(?:\([^)]*\))?'
+            annotations = re.findall(pattern, code)
+        elif language == 'python':
+            pattern = r'@(\w+)(?:\([^)]*\))?'
+            annotations = re.findall(pattern, code)
+        return list(set(annotations))
+    
+    def _extract_controllers(self, code: str, language: str) -> List[Dict]:
+        controllers = []
+        if language == 'java':
+            controller_pattern = r'@(Controller|RestController|Component|Service|Repository)\s*(?:\([^)]*\))?\s*(?:public\s+)?class\s+(\w+)'
+            matches = re.finditer(controller_pattern, code, re.MULTILINE)
+            for match in matches:
+                controllers.append({
+                    'type': match.group(1),
+                    'name': match.group(2)
+                })
+        elif language in ['javascript', 'typescript']:
+            controller_patterns = [
+                r'@Controller\s*(?:\([^)]*\))?\s*(?:export\s+)?(?:class\s+)?(\w+)',
+                r'(?:export\s+)?class\s+(\w+)Controller',
+                r'const\s+(\w+)\s*=\s*.*controller'
+            ]
+            for pattern in controller_patterns:
+                matches = re.findall(pattern, code, re.IGNORECASE)
+                for match in matches:
+                    controllers.append({'name': match})
+        return controllers
+    
+    def _extract_endpoints(self, code: str, language: str) -> List[Dict]:
+        endpoints = []
+        if language == 'java':
+            endpoint_pattern = r'@(GetMapping|PostMapping|PutMapping|DeleteMapping|RequestMapping)\s*(?:\((?:[^)]*"([^"]*)"[^)]*|[^)]*value\s*=\s*"([^"]*)"[^)]*)\))?\s*(?:public\s+)?(?:\w+\s+)?(\w+)\s*\('
+            matches = re.finditer(endpoint_pattern, code, re.MULTILINE)
+            for match in matches:
+                endpoint_info = {
+                    'method': match.group(1),
+                    'path': match.group(2) or match.group(3) or '',
+                    'handler': match.group(4)
+                }
+                endpoints.append(endpoint_info)
+        elif language in ['javascript', 'typescript']:
+            endpoint_patterns = [
+                r'@(Get|Post|Put|Delete|Patch)\s*(?:\(["\']([^"\']*)["\']?\))?\s*(?:async\s+)?(\w+)\s*\(',
+                r'router\.(get|post|put|delete|patch)\s*\(\s*["\']([^"\']*)["\']?\s*,\s*(?:async\s+)?(?:function\s*)?(?:\(.*?\)\s*=>|\w+)',
+                r'app\.(get|post|put|delete|patch)\s*\(\s*["\']([^"\']*)["\']?\s*,\s*(?:async\s+)?(?:function\s*)?(?:\(.*?\)\s*=>|\w+)'
+            ]
+            for pattern in endpoint_patterns:
+                matches = re.finditer(pattern, code, re.IGNORECASE)
+                for match in matches:
+                    endpoint_info = {
+                        'method': match.group(1).upper(),
+                        'path': match.group(2) or '',
+                        'handler': match.group(3) if len(match.groups()) > 2 else ''
+                    }
+                    endpoints.append(endpoint_info)
+        elif language == 'python':
+            patterns = [
+                r'@app\.(get|post|put|delete|patch)\s*\(\s*["\']([^"\']*)["\']',
+                r'@router\.(get|post|put|delete|patch)\s*\(\s*["\']([^"\']*)["\']'
+            ]
+            for pattern in patterns:
+                matches = re.finditer(pattern, code, re.IGNORECASE)
+                for match in matches:
+                    endpoint_info = {
+                        'method': match.group(1).upper(),
+                        'path': match.group(2)
+                    }
+                    endpoints.append(endpoint_info)
+        return endpoints
+    
+    def _extract_interfaces(self, code: str, language: str) -> List[Dict]:
+        interfaces = []
+        if language == 'java':
+            pattern = r'(?:public\s+)?interface\s+(\w+)(?:\s+extends\s+([^{]+))?\s*\{'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                interface_info = {
+                    'name': match.group(1),
+                    'extends': [i.strip() for i in (match.group(2) or '').split(',') if i.strip()]
+                }
+                interfaces.append(interface_info)
+        elif language in ['javascript', 'typescript']:
+            pattern = r'(?:export\s+)?interface\s+(\w+)(?:\s+extends\s+([^{]+))?\s*\{'
+            matches = re.finditer(pattern, code, re.MULTILINE)
+            for match in matches:
+                interface_info = {
+                    'name': match.group(1),
+                    'extends': [i.strip() for i in (match.group(2) or '').split(',') if i.strip()]
+                }
+                interfaces.append(interface_info)
+        return interfaces
+    
+    def _extract_types(self, code: str, language: str) -> List[str]:
+        types = []
+        if language in ['typescript']:
+            patterns = [
+                r'type\s+(\w+)\s*=',
+                r'enum\s+(\w+)\s*\{',
+                r'(?:export\s+)?(?:declare\s+)?type\s+(\w+)'
+            ]
+            for pattern in patterns:
+                matches = re.findall(pattern, code)
+                types.extend(matches)
+        return list(set(types))
+    
+    def _extract_json_keys(self, code: str, language: str) -> List[str]:
+        keys = []
+        if language == 'json':
+            try:
+                json_data = json.loads(code)
+                keys = self._get_json_keys_recursive(json_data)
+            except:
+                pattern = r'"([^"]+)"\s*:'
+                keys = re.findall(pattern, code)
+        return list(set(keys))
+    
+    def _get_json_keys_recursive(self, obj, prefix=''):
+        keys = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                full_key = f"{prefix}.{key}" if prefix else key
+                keys.append(full_key)
+                if isinstance(value, (dict, list)):
+                    keys.extend(self._get_json_keys_recursive(value, full_key))
+        elif isinstance(obj, list) and obj:
+            for i, item in enumerate(obj[:3]):
+                if isinstance(item, (dict, list)):
+                    keys.extend(self._get_json_keys_recursive(item, f"{prefix}[{i}]"))
+        return keys
+    
+    def _extract_searchable_text(self, code: str, language: str, features: Dict = None) -> str:
+        text_parts = []
+        text_parts.append(code)
+        
+        if features:
+            for method in features.get('methods', []):
+                text_parts.append(method.get('name', ''))
+                text_parts.extend(method.get('annotations', []))
+            
+            for cls in features.get('classes', []):
+                text_parts.append(cls.get('name', ''))
+                text_parts.extend(cls.get('annotations', []))
+            
+            for controller in features.get('controllers', []):
+                text_parts.append(controller.get('name', ''))
+            
+            for endpoint in features.get('endpoints', []):
+                text_parts.append(endpoint.get('method', ''))
+                text_parts.append(endpoint.get('path', ''))
+                text_parts.append(endpoint.get('handler', ''))
+            
+            text_parts.extend(features.get('imports', []))
+            text_parts.extend(features.get('annotations', []))
+            text_parts.extend(features.get('types', []))
+            text_parts.extend(features.get('json_keys', []))
+        
+        return ' '.join(filter(None, text_parts))
+
+class GraphiteCodeGeneratorFAISS:
+    def __init__(self, model_path: str = None):
+        if model_path is None:
+            model_dir = Path("./codingModel")
+            model_dir.mkdir(exist_ok=True)
+            self.model_path = model_dir / "graphite_coder_faiss_model.pkl"
+            self.faiss_index_path = model_dir / "graphite_coder_faiss.index"
+        else:
+            self.model_path = Path(model_path)
+            self.faiss_index_path = Path(str(model_path).replace('.pkl', '.index'))
+            
+        self.analyzer = CodeAnalyzer()
+        self.vectorizer = TfidfVectorizer(max_features=2000, stop_words='english', ngram_range=(1, 2))
+        self.code_database = []
+        self.feature_vectors = None
+        self.faiss_index = None
+        self.is_trained = False
+        
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
+    
+    def _build_faiss_index(self, vectors: np.ndarray) -> None:
+        dimension = vectors.shape[1]
+        
+        if len(vectors) > 50000:
+            nlist = min(4096, len(vectors) // 10)
+            quantizer = faiss.IndexFlatIP(dimension)
+            self.faiss_index = faiss.IndexIVFFlat(quantizer, dimension, nlist)
+            self.faiss_index.train(vectors.astype(np.float32))
+        else:
+            self.faiss_index = faiss.IndexFlatIP(dimension)
+        
+        faiss.normalize_L2(vectors.astype(np.float32))
+        self.faiss_index.add(vectors.astype(np.float32))
+    
+    def _should_exclude_path(self, file_path: Path) -> bool:
+        exclude_dirs = {
+            'node_modules', 'target', 'build', 'dist', 'out', 'bin', 'obj',
+            '.git', '.svn', '.hg', '__pycache__', '.pytest_cache', '.vscode',
+            '.idea', 'venv', 'env', '.env', 'vendor', 'deps', '_build',
+            'gradle', '.gradle', 'maven', '.maven', 'lib', 'libs', 
+            'generated', 'auto-generated', 'resources', 'assets', 'coverage'
+        }
+        
+        exclude_files = {
+            'package-lock.json', 'yarn.lock', 'pom.xml', 'build.gradle',
+            'gradlew', 'gradlew.bat', 'mvnw', 'mvnw.cmd', '.gitignore',
+            '.gitattributes', 'README.md', 'LICENSE', 'CHANGELOG.md'
+        }
+        
+        path_parts = set(file_path.parts)
+        if path_parts.intersection(exclude_dirs):
+            return True
+            
+        if file_path.name in exclude_files:
+            return True
+            
+        if file_path.name.startswith('.') and file_path.suffix not in self.analyzer.supported_extensions:
+            return True
+            
+        return False
+
+    def scan_projects(self, root_paths: List[str] = None) -> None:
+        if root_paths is None:
+            root_paths = ["./codeProjects"]
+        
+        for root_path in root_paths:
+            root = Path(root_path)
+            if not root.exists():
+                self.logger.warning(f"Path {root_path} does not exist")
+                continue
+                
+            for file_path in root.rglob("*"):
+                if file_path.is_file() and file_path.suffix in self.analyzer.supported_extensions:
+                    if self._should_exclude_path(file_path):
+                        continue
+                        
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            code_content = f.read()
+                        
+                        if len(code_content.strip()) > 10:
+                            language = self.analyzer.supported_extensions[file_path.suffix]
+                            features = self.analyzer.extract_features(code_content, language)
+                            
+                            code_entry = {
+                                'file_path': str(file_path),
+                                'content': code_content,
+                                'features': features,
+                                'language': language,
+                                'project_name': self._extract_project_name(file_path),
+                                'service_name': self._extract_service_name(file_path)
+                            }
+                            self.code_database.append(code_entry)
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error processing {file_path}: {e}")
+    
+    def _extract_project_name(self, file_path: Path) -> str:
+        parts = file_path.parts
+        for i, part in enumerate(parts):
+            if part == 'codeProjects' and i + 1 < len(parts):
+                return parts[i + 1]
+        return parts[-3] if len(parts) > 2 else "unknown"
+    
+    def _extract_service_name(self, file_path: Path) -> str:
+        path_str = str(file_path).lower()
+        if 'service' in path_str:
+            parts = file_path.parts
+            for part in parts:
+                if 'service' in part.lower():
+                    return part
+        return ""
+    
+    def train_model(self) -> None:
+        if not self.code_database:
+            raise ValueError("No code files found. Run scan_projects first.")
+        
+        text_data = []
+        for entry in self.code_database:
+            searchable_text = entry['features']['all_text']
+            text_data.append(searchable_text)
+        
+        self.feature_vectors = self.vectorizer.fit_transform(text_data).toarray()
+        self._build_faiss_index(self.feature_vectors)
+        
+        self.is_trained = True
+    
+    def save_model(self) -> None:
+        if not self.is_trained:
+            raise ValueError("Model not trained. Cannot save.")
+        
+        model_data = {
+            'code_database': self.code_database,
+            'vectorizer': self.vectorizer,
+            'feature_vectors': self.feature_vectors,
+            'is_trained': self.is_trained
+        }
+        
+        with open(self.model_path, 'wb') as f:
+            pickle.dump(model_data, f)
+        
+        faiss.write_index(self.faiss_index, str(self.faiss_index_path))
+    
+    def load_model(self) -> bool:
+        if not self.model_path.exists() or not self.faiss_index_path.exists():
+            return False
+        
+        try:
+            with open(self.model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            self.code_database = model_data['code_database']
+            self.vectorizer = model_data['vectorizer']
+            self.feature_vectors = model_data['feature_vectors']
+            self.is_trained = model_data['is_trained']
+            
+            self.faiss_index = faiss.read_index(str(self.faiss_index_path))
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Error loading model: {e}")
+            return False
+    
+    def _search_faiss_index(self, query_vector: np.ndarray, k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
+        query_vector = query_vector.astype(np.float32)
+        faiss.normalize_L2(query_vector)
+        distances, indices = self.faiss_index.search(query_vector, k)
+        return distances[0], indices[0]
+    
+    def _detect_language_from_query(self, query: str) -> str:
+        language_keywords = {
+            'java': ['@Controller', '@RestController', '@GetMapping', '@PostMapping', 'class', 'public', 'private', 'import', 'package'],
+            'javascript': ['function', 'const', 'let', 'var', 'require', 'module.exports', 'export'],
+            'typescript': ['interface', 'type', 'enum', 'implements', 'extends'],
+            'python': ['def', 'class', 'import', 'from', 'if __name__', 'self'],
+            'json': ['json', 'config', 'configuration', 'properties']
+        }
+        
+        query_lower = query.lower()
+        scores = {}
+        
+        for lang, keywords in language_keywords.items():
+            score = sum(1 for keyword in keywords if keyword.lower() in query_lower)
+            if score > 0:
+                scores[lang] = score
+        
+        return max(scores, key=scores.get) if scores else None
+
+    def find_similar_code(self, query: str, language: str = None, service_filter: str = None, k: int = 10) -> Dict:
+        if not self.is_trained:
+            raise ValueError("Model not trained. Run train_model first or load existing model.")
+        
+        if not language:
+            language = self._detect_language_from_query(query)
+        
+        query_vector = self.vectorizer.transform([query]).toarray()
+        distances, indices = self._search_faiss_index(query_vector, k * 2)
+        
+        results = []
+        for i, idx in enumerate(indices):
+            if idx < len(self.code_database):
+                entry = self.code_database[idx]
+                
+                if language and entry['language'] != language:
+                    continue
+                
+                if service_filter and service_filter.lower() not in entry['service_name'].lower() and service_filter.lower() not in entry['project_name'].lower():
+                    continue
+                
+                similarity_score = float(distances[i])
+                
+                result = {
+                    'file_path': entry['file_path'],
+                    'project_name': entry['project_name'],
+                    'service_name': entry['service_name'],
+                    'language': entry['language'],
+                    'similarity_score': similarity_score,
+                    'full_code': entry['content'],
+                    'features': entry['features']
+                }
+                results.append(result)
+                
+                if len(results) >= k:
+                    break
+        
+        return {
+            'detected_language': language,
+            'query': query,
+            'service_filter': service_filter,
+            'total_found': len(results),
+            'results': results
+        }
+    
+    def find_controllers(self, service_name: str = None, language: str = 'java') -> List[Dict]:
+        controllers = []
+        for entry in self.code_database:
+            if language and entry['language'] != language:
+                continue
+            
+            if service_name and service_name.lower() not in entry['service_name'].lower() and service_name.lower() not in entry['project_name'].lower():
+                continue
+            
+            entry_controllers = entry['features'].get('controllers', [])
+            for controller in entry_controllers:
+                controllers.append({
+                    'controller': controller,
+                    'file_path': entry['file_path'],
+                    'project_name': entry['project_name'],
+                    'service_name': entry['service_name'],
+                    'full_code': entry['content']
+                })
+        
+        return controllers
+    
+    def find_endpoints(self, method_type: str = None, service_name: str = None, language: str = 'java') -> List[Dict]:
+        endpoints = []
+        for entry in self.code_database:
+            if language and entry['language'] != language:
+                continue
+            
+            if service_name and service_name.lower() not in entry['service_name'].lower() and service_name.lower() not in entry['project_name'].lower():
+                continue
+            
+            entry_endpoints = entry['features'].get('endpoints', [])
+            for endpoint in entry_endpoints:
+                if method_type and method_type.upper() not in endpoint.get('method', '').upper():
+                    continue
+                
+                endpoints.append({
+                    'endpoint': endpoint,
+                    'file_path': entry['file_path'],
+                    'project_name': entry['project_name'],
+                    'service_name': entry['service_name'],
+                    'full_code': entry['content']
+                })
+        
+        return endpoints
+    
+    def get_performance_stats(self) -> Dict:
+        lang_stats = {}
+        service_stats = {}
+        project_stats = {}
+        feature_counts = {
+            'methods': 0,
+            'classes': 0,
+            'controllers': 0,
+            'endpoints': 0,
+            'interfaces': 0,
+            'types': 0,
+            'imports': 0,
+            'annotations': 0,
+            'json_keys': 0
+        }
+        
+        for entry in self.code_database:
+            lang = entry['language']
+            service = entry['service_name'] or entry['project_name']
+            project = entry['project_name']
+            
+            lang_stats[lang] = lang_stats.get(lang, 0) + 1
+            service_stats[service] = service_stats.get(service, 0) + 1
+            project_stats[project] = project_stats.get(project, 0) + 1
+            
+            features = entry['features']
+            feature_counts['methods'] += len(features.get('methods', []))
+            feature_counts['classes'] += len(features.get('classes', []))
+            feature_counts['controllers'] += len(features.get('controllers', []))
+            feature_counts['endpoints'] += len(features.get('endpoints', []))
+            feature_counts['interfaces'] += len(features.get('interfaces', []))
+            feature_counts['types'] += len(features.get('types', []))
+            feature_counts['imports'] += len(features.get('imports', []))
+            feature_counts['annotations'] += len(features.get('annotations', []))
+            feature_counts['json_keys'] += len(features.get('json_keys', []))
+        
+        return {
+            'total_files': len(self.code_database),
+            'languages': lang_stats,
+            'services': service_stats,
+            'projects': project_stats,
+            'features': feature_counts,
+            'is_trained': self.is_trained,
+            'model_path': str(self.model_path),
+            'index_path': str(self.faiss_index_path),
+            'index_size': self.faiss_index.ntotal if self.faiss_index else 0
+        }
+
+    def generate_code_snippet(self, query: str, language: str = None, max_results: int = 5) -> Dict:
+        if not self.is_trained:
+            raise ValueError("Model not trained. Run train_model first or load existing model.")
+        
+        search_results = self.find_similar_code(query, language=language, k=max_results)
+        
+        combined_code = []
+        for result in search_results['results']:
+            combined_code.append(result['full_code'])
+        
+        snippet = "\n".join(combined_code[:max_results])
+        
+        return {
+            'query': query,
+            'detected_language': search_results['detected_language'],
+            'snippet': snippet,
+            'sources': [
+                {
+                    'file_path': r['file_path'],
+                    'project_name': r['project_name'],
+                    'service_name': r['service_name'],
+                    'similarity_score': r['similarity_score']
+                } for r in search_results['results']
+            ]
+        }
+    
+def main():
+    code_generator = GraphiteCodeGeneratorFAISS()
+    project_paths = ["./codeProjects"]
+    
+    print("Scanning projects...")
+    try:
+        code_generator.scan_projects(project_paths)
+    except Exception as e:
+        print(f"Error scanning projects: {e}")
+        return
+    
+    if not code_generator.code_database:
+        print("No code files found. Please check project paths.")
+        return
+    
+    print("Training model...")
+    try:
+        code_generator.train_model()
+    except Exception as e:
+        print(f"Error training model: {e}")
+        return
+    
+    print("Saving model...")
+    try:
+        code_generator.save_model()
+    except Exception as e:
+        print(f"Error saving model: {e}")
+    
+    while True:
+        query = input("Enter query (or 'quit' to exit): ").strip()
+        if query.lower() == 'quit':
+            break
+            
+        if not query:
+            print("Empty query. Please enter a valid query.")
+            continue
+        
+        print("\nFinding similar code...")
+        results = code_generator.find_similar_code(query=query, language=None, service_filter=None, k=5)
+        if results['results']:
+            for result in results['results']:
+                print(f"File: {result['file_path']}, Score: {result['similarity_score']:.4f}, Language: {result['language']}")
+                print(f"Code:\n{result['full_code']}")
+                print("\n---\n")
+        else:
+            print(f"No similar code found for query: {query}")
+        
+        print("\nFinding controllers...")
+        controllers = code_generator.find_controllers(service_name=None, language=None)
+        if controllers:
+            for controller in controllers[:2]:
+                print(f"Controller: {controller['controller']['name']}, File: {controller['file_path']}")
+                print(f"Code:\n{controller['full_code']}")
+                print("\n---\n")
+        else:
+            print("No controllers found.")
+        
+        print("\nFinding GET endpoints...")
+        endpoints = code_generator.find_endpoints(method_type="GET", language=None)
+        if endpoints:
+            for endpoint in endpoints[:2]:
+                print(f"Endpoint: {endpoint['endpoint']['path']}, Method: {endpoint['endpoint']['method']}, File: {endpoint['file_path']}")
+                print(f"Code:\n{endpoint['full_code']}")
+                print("\n---\n")
+        else:
+            print("No GET endpoints found.")
+        
+        print("\nGenerating code snippet...")
+        snippet_result = code_generator.generate_code_snippet(query=query, language=None, max_results=3)
+        if snippet_result['sources']:
+            print(f"Generated Snippet:\n{snippet_result['snippet']}")
+            print(f"Sources: {snippet_result['sources']}")
+        else:
+            print("No code snippet generated. No matching sources found.")
+        
+        print("\nPerformance stats...")
+        stats = code_generator.get_performance_stats()
+        print(f"Total Files: {stats['total_files']}")
+        print(f"Languages: {stats['languages']}")
+        print(f"Feature Counts: {stats['features']}")
+
+if __name__ == "__main__":
+    main()
