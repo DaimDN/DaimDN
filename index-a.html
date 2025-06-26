@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Regressio AI Emulator - Turbocharged</title>
+		<script src="https://cdn.tailwindcss.com"></script>
+		<style>
+			.loader {
+				border: 3px solid #f3f4f6;
+				border-top: 3px solid #3b82f6;
+				border-radius: 50%;
+				width: 20px;
+				height: 20px;
+				animation: spin 0.5s linear infinite;
+			}
+			@keyframes spin {
+				0% {
+					transform: rotate(0deg);
+				}
+				100% {
+					transform: rotate(360deg);
+				}
+			}
+			.code-block {
+				background: #1f2937;
+				color: #f9fafb;
+				font-family: "JetBrains Mono", "Courier New", monospace;
+				border-radius: 8px;
+				padding: 16px;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				font-size: 14px;
+				line-height: 1.5;
+			}
+			.status-success {
+				background-color: #dcfce7;
+				border-left: 4px solid #16a34a;
+			}
+			.status-error {
+				background-color: #fef2f2;
+				border-left: 4px solid #dc2626;
+			}
+			.sidebar-sticky {
+				position: sticky;
+				top: 0;
+				height: 100vh;
+				overflow-y: auto;
+			}
+			.main-content {
+				min-height: 100vh;
+			}
+			.action-step {
+				transition: all 0.2s ease;
+			}
+			.action-step:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+			}
+			.welcome-state {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				min-height: 70vh;
+			}
+			.voice-button {
+				background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+				animation: pulse 2s infinite;
+			}
+			.voice-button.listening {
+				background: linear-gradient(45deg, #ff0000, #ff4444);
+				animation: listening 0.5s infinite alternate;
+			}
+			.speaker-button {
+				background: linear-gradient(45deg, #4ecdc4, #44a08d);
+				animation: pulse 2s infinite;
+			}
+			.speaker-button.speaking {
+				background: linear-gradient(45deg, #ff9500, #ffb84d);
+				animation: speaking 0.8s infinite alternate;
+			}
+			@keyframes pulse {
+				0% {
+					transform: scale(1);
+				}
+				50% {
+					transform: scale(1.05);
+				}
+				100% {
+					transform: scale(1);
+				}
+			}
+			@keyframes listening {
+				0% {
+					transform: scale(1) rotate(0deg);
+				}
+				100% {
+					transform: scale(1.1) rotate(3deg);
+				}
+			}
+			@keyframes speaking {
+				0% {
+					transform: scale(1);
+				}
+				100% {
+					transform: scale(1.15);
+				}
+			}
+			.live-indicator {
+				animation: blink 1s infinite;
+			}
+			@keyframes blink {
+				0%,
+				50% {
+					opacity: 1;
+				}
+				51%,
+				100% {
+					opacity: 0.3;
+				}
+			}
+			.turbo-mode {
+				background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+			}
+			.speed-indicator {
+				background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+				background-size: 200% 100%;
+				animation: speedometer 2s linear infinite;
+			}
+			@keyframes speedometer {
+				0% {
+					background-position: 0% 50%;
+				}
+				100% {
+					background-position: 200% 50%;
+				}
+			}
+			.real-time-updates {
+				border: 2px solid #4ade80;
+				box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+			}
+			.voice-wave {
+				width: 4px;
+				height: 20px;
+				background: linear-gradient(to top, #4ecdc4, #44a08d);
+				margin: 0 1px;
+				animation: wave 1s ease-in-out infinite;
+			}
+			.voice-wave:nth-child(1) {
+				animation-delay: 0s;
+			}
+			.voice-wave:nth-child(2) {
+				animation-delay: 0.1s;
+			}
+			.voice-wave:nth-child(3) {
+				animation-delay: 0.2s;
+			}
+			.voice-wave:nth-child(4) {
+				animation-delay: 0.3s;
+			}
+			.voice-wave:nth-child(5) {
+				animation-delay: 0.4s;
+			}
+			@keyframes wave {
+				0%,
+				100% {
+					height: 4px;
+				}
+				50% {
+					height: 20px;
+				}
+			}
+			.tts-control {
+				background: linear-gradient(45deg, #10b981, #059669);
+			}
+		</style>
+	</head>
+	<body class="bg-gray-50">
+		<div class="flex min-h-screen">
+			<div class="w-1/3 bg-white border-r border-gray-200 sidebar-sticky">
+				<div class="p-6">
+					<div class="mb-8">
+						<div class="flex items-center gap-3 mb-2">
+							<div
+								class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+								<span class="text-white text-xl">🚀</span>
+							</div>
+							<div>
+								<h1 class="text-2xl font-bold text-gray-900">
+									Regressio Turbo
+								</h1>
+								<p class="text-sm text-gray-500">
+									Lightning-Fast AI Automation
+								</p>
+							</div>
+						</div>
+						<div class="flex items-center gap-2 mb-2">
+							<div class="speed-indicator w-16 h-2 rounded-full"></div>
+							<span class="text-xs font-medium text-purple-600"
+								>TURBO MODE</span
+							>
+						</div>
+						<p class="text-gray-600 text-sm">
+							Generate and execute intelligent web automation tests with voice
+							commands and real-time updates
+						</p>
+					</div>
+
+					<div class="space-y-6">
+						<div>
+							<label
+								for="goalInput"
+								class="block text-sm font-semibold text-gray-700 mb-2">
+								🎯 Your Goal
+							</label>
+							<textarea
+								id="goalInput"
+								rows="5"
+								placeholder="Describe what you want to achieve...
+
+Examples:
+- 'go to youtube and play music'
+- 'search google for cats'
+- 'open amazon and find laptops'
+- 'navigate to reddit'"
+								class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm resize-none"></textarea>
+							<p class="text-xs text-gray-500 mt-1">
+								💡 Use Ctrl+Enter or voice command
+							</p>
+						</div>
+
+						<div class="flex gap-2">
+							<button
+								onclick="executeGoal()"
+								id="executeBtn"
+								class="flex-1 turbo-mode text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl">
+								<span id="btnText">⚡ Execute Goal</span>
+								<div id="btnLoader" class="loader ml-2 hidden"></div>
+							</button>
+							<button
+								onclick="toggleVoiceCommand()"
+								id="voiceBtn"
+								class="voice-button text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl">
+								<span id="voiceIcon">🎤</span>
+							</button>
+							<button
+								onclick="toggleSpeechOutput()"
+								id="speakerBtn"
+								class="speaker-button text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl"
+								title="Toggle speech output">
+								<span id="speakerIcon">🔊</span>
+							</button>
+						</div>
+
+						<!-- TTS Controls -->
+						<div
+							class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-3">
+							<div class="flex items-center justify-between mb-2">
+								<span class="text-sm font-medium text-green-800"
+									>🔊 Speech Settings</span
+								>
+								<label class="flex items-center">
+									<input type="checkbox" id="ttsEnabled" checked class="mr-2" />
+									<span class="text-xs text-green-700">Auto-speak steps</span>
+								</label>
+							</div>
+							<div class="flex items-center gap-2">
+								<label class="text-xs text-green-700">Speed:</label>
+								<input
+									type="range"
+									id="speechRate"
+									min="0.5"
+									max="2"
+									step="0.1"
+									value="1"
+									class="flex-1" />
+								<span id="rateValue" class="text-xs text-green-700">1x</span>
+							</div>
+						</div>
+
+						<div
+							id="voiceStatus"
+							class="hidden bg-red-50 border border-red-200 rounded-lg p-3">
+							<div class="flex items-center gap-2">
+								<div class="flex gap-1">
+									<div class="voice-wave"></div>
+									<div class="voice-wave"></div>
+									<div class="voice-wave"></div>
+									<div class="voice-wave"></div>
+									<div class="voice-wave"></div>
+								</div>
+								<span class="text-sm font-medium text-red-800"
+									>Listening...</span
+								>
+							</div>
+							<div class="text-xs text-red-600 mt-1">
+								Speak your goal clearly
+							</div>
+						</div>
+
+						<div
+							id="speechStatus"
+							class="hidden bg-orange-50 border border-orange-200 rounded-lg p-3">
+							<div class="flex items-center gap-2">
+								<div class="loader"></div>
+								<span class="text-sm font-medium text-orange-800"
+									>Speaking...</span
+								>
+							</div>
+							<div id="speechText" class="text-xs text-orange-600 mt-1">
+								Current speech output
+							</div>
+						</div>
+					</div>
+
+					<div class="mt-8">
+						<h3 class="text-sm font-semibold text-gray-700 mb-3">
+							⚡ Turbo Examples
+						</h3>
+						<div class="space-y-2">
+							<button
+								onclick="useExample(0)"
+								class="w-full text-left p-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 rounded-lg transition-colors text-sm border border-blue-200">
+								<div class="font-medium text-gray-800">🎵 YouTube Music</div>
+								<div class="text-gray-600 text-xs mt-1">
+									Go to YouTube and play music
+								</div>
+							</button>
+							<button
+								onclick="useExample(1)"
+								class="w-full text-left p-3 bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 rounded-lg transition-colors text-sm border border-green-200">
+								<div class="font-medium text-gray-800">🔍 Google Search</div>
+								<div class="text-gray-600 text-xs mt-1">
+									Search Google for anything
+								</div>
+							</button>
+							<button
+								onclick="useExample(2)"
+								class="w-full text-left p-3 bg-gradient-to-r from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 rounded-lg transition-colors text-sm border border-purple-200">
+								<div class="font-medium text-gray-800">🛒 Amazon Search</div>
+								<div class="text-gray-600 text-xs mt-1">
+									Find products on Amazon
+								</div>
+							</button>
+							<button
+								onclick="useExample(3)"
+								class="w-full text-left p-3 bg-gradient-to-r from-orange-50 to-red-50 hover:from-orange-100 hover:to-red-100 rounded-lg transition-colors text-sm border border-orange-200">
+								<div class="font-medium text-gray-800">📱 Reddit Browse</div>
+								<div class="text-gray-600 text-xs mt-1">Navigate to Reddit</div>
+							</button>
+						</div>
+					</div>
+
+					<div id="liveStatus" class="mt-8 hidden">
+						<div
+							class="bg-blue-50 border border-blue-200 rounded-lg p-4 real-time-updates">
+							<div class="flex items-center gap-2">
+								<div class="loader"></div>
+								<span class="text-sm font-medium text-blue-800"
+									>AI is thinking...</span
+								>
+								<div
+									class="live-indicator w-2 h-2 bg-green-500 rounded-full ml-auto"></div>
+							</div>
+							<div id="currentStep" class="text-xs text-blue-600 mt-1">
+								Initializing browser...
+							</div>
+						</div>
+					</div>
+
+					<div id="executionSpeed" class="mt-4 hidden">
+						<div
+							class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-3">
+							<div class="flex items-center justify-between">
+								<span class="text-sm font-medium text-green-800"
+									>Execution Speed</span
+								>
+								<span id="speedValue" class="text-lg font-bold text-green-600"
+									>0 ms</span
+								>
+							</div>
+							<div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+								<div
+									id="speedBar"
+									class="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full transition-all duration-300"
+									style="width: 0%"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="flex-1 main-content">
+				<div id="welcomeState" class="welcome-state">
+					<div class="text-center">
+						<div
+							class="w-24 h-24 bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+							<span class="text-4xl">🚀</span>
+						</div>
+						<h2 class="text-2xl font-bold text-gray-800 mb-2">
+							Ready for Turbo Automation
+						</h2>
+						<p class="text-gray-600 mb-6 max-w-md">
+							Describe any web goal in natural language or use voice commands
+							and watch the AI execute it at lightning speed with audio feedback
+						</p>
+						<div
+							class="flex items-center justify-center gap-6 text-sm text-gray-500">
+							<div class="flex items-center gap-2">
+								<span
+									class="w-2 h-2 bg-green-500 rounded-full live-indicator"></span>
+								<span>Real-time Updates</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+								<span>Voice Commands</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="w-2 h-2 bg-purple-500 rounded-full"></span>
+								<span>Audio Feedback</span>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div id="resultsContent" class="hidden p-6">
+					<div id="liveLogSection" class="mb-6">
+						<div
+							class="bg-white rounded-xl shadow-sm border border-gray-200 real-time-updates">
+							<div class="px-6 py-4 border-b border-gray-200">
+								<h2
+									class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+									<span
+										class="w-2 h-2 bg-green-500 rounded-full live-indicator"></span>
+									Live Execution Stream
+								</h2>
+								<div class="flex items-center gap-4 mt-2">
+									<div class="text-xs text-gray-500">
+										Updates:
+										<span id="updateCount" class="font-bold text-green-600"
+											>0</span
+										>
+									</div>
+									<div class="text-xs text-gray-500">
+										Speed:
+										<span
+											id="liveSpeedIndicator"
+											class="font-bold text-blue-600"
+											>Real-time</span
+										>
+									</div>
+								</div>
+							</div>
+							<div class="p-4">
+								<div
+									id="liveLogContent"
+									class="bg-gray-900 text-green-400 rounded-lg p-4 max-h-48 overflow-y-auto font-mono text-sm"></div>
+							</div>
+						</div>
+					</div>
+
+					<div id="stepsSection" class="mb-6">
+						<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+							<div class="px-6 py-4 border-b border-gray-200">
+								<h2 class="text-lg font-semibold text-gray-800">
+									🎯 AI Decision Steps
+								</h2>
+								<p class="text-sm text-gray-600">
+									Lightning-fast AI decisions and actions with audio feedback
+								</p>
+							</div>
+							<div class="p-6">
+								<div id="executionSteps" class="space-y-3"></div>
+							</div>
+						</div>
+					</div>
+
+					<div id="codeSection" class="mb-6">
+						<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+							<div
+								class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+								<div>
+									<h2 class="text-lg font-semibold text-gray-800">
+										📝 Generated Playwright Test
+									</h2>
+									<p class="text-sm text-gray-600">
+										Auto-generated from turbo execution
+									</p>
+								</div>
+								<div class="flex gap-2">
+									<button
+										onclick="copyCode()"
+										class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+										<span>📋</span> Copy
+									</button>
+									<button
+										onclick="downloadTest()"
+										class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+										<span>💾</span> Download
+									</button>
+								</div>
+							</div>
+							<div class="p-0">
+								<div id="testCode" class="code-block"></div>
+							</div>
+						</div>
+					</div>
+
+					<div id="summarySection">
+						<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+							<div class="px-6 py-4 border-b border-gray-200">
+								<h2 class="text-lg font-semibold text-gray-800">
+									📊 Turbo Execution Summary
+								</h2>
+								<p class="text-sm text-gray-600">
+									Performance metrics and results
+								</p>
+							</div>
+							<div class="p-6">
+								<div id="executionSummary" class="space-y-3"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			let currentSteps = [];
+			let generatedTest = "";
+			let fileName = "";
+			let ws = null;
+			let recognition = null;
+			let isListening = false;
+			let updateCount = 0;
+			let executionStartTime = 0;
+			let speechSynthesis = null;
+			let isSpeaking = false;
+			let speechEnabled = true;
+
+			const examples = [
+				"go to youtube and play music",
+				"search google for cats",
+				"open amazon and find laptops",
+				"navigate to reddit",
+			];
+
+			function initializeSpeechSynthesis() {
+				if ("speechSynthesis" in window) {
+					speechSynthesis = window.speechSynthesis;
+
+					// Update rate control
+					document
+						.getElementById("speechRate")
+						.addEventListener("input", (e) => {
+							document.getElementById("rateValue").textContent =
+								e.target.value + "x";
+						});
+
+					// Update speech enabled checkbox
+					document
+						.getElementById("ttsEnabled")
+						.addEventListener("change", (e) => {
+							speechEnabled = e.target.checked;
+							if (!speechEnabled && isSpeaking) {
+								stopSpeaking();
+							}
+						});
+				} else {
+					// Hide speech controls if not supported
+					document.getElementById("speakerBtn").style.display = "none";
+					document.querySelector(".tts-control").style.display = "none";
+					showNotification(
+						"❌ Speech synthesis not supported in this browser",
+						"error",
+					);
+				}
+			}
+
+			function speakText(text, priority = false) {
+				if (!speechSynthesis || !speechEnabled || (!priority && isSpeaking)) {
+					return;
+				}
+
+				// Cancel current speech if priority message
+				if (priority && isSpeaking) {
+					stopSpeaking();
+				}
+
+				// Clean up the text for better speech
+				const cleanText = text
+					.replace(/🎯|⚡|🌐|👆|⌨️|🔄|⏱️|📜|🖱️|✅|❌|🧠|🔍|🛒|📱/g, "") // Remove emojis
+					.replace(/Executing:/g, "Now executing:")
+					.replace(/API:/g, "A P I:")
+					.trim();
+
+				if (!cleanText) return;
+
+				const utterance = new SpeechSynthesisUtterance(cleanText);
+				utterance.rate = parseFloat(
+					document.getElementById("speechRate").value,
+				);
+				utterance.pitch = 1;
+				utterance.volume = 0.8;
+
+				utterance.onstart = () => {
+					isSpeaking = true;
+					document.getElementById("speakerBtn").classList.add("speaking");
+					document.getElementById("speechStatus").classList.remove("hidden");
+					document.getElementById("speechText").textContent = cleanText;
+				};
+
+				utterance.onend = () => {
+					isSpeaking = false;
+					document.getElementById("speakerBtn").classList.remove("speaking");
+					document.getElementById("speechStatus").classList.add("hidden");
+				};
+
+				utterance.onerror = () => {
+					isSpeaking = false;
+					document.getElementById("speakerBtn").classList.remove("speaking");
+					document.getElementById("speechStatus").classList.add("hidden");
+				};
+
+				speechSynthesis.speak(utterance);
+			}
+
+			function stopSpeaking() {
+				if (speechSynthesis && isSpeaking) {
+					speechSynthesis.cancel();
+					isSpeaking = false;
+					document.getElementById("speakerBtn").classList.remove("speaking");
+					document.getElementById("speechStatus").classList.add("hidden");
+				}
+			}
+
+			function toggleSpeechOutput() {
+				if (isSpeaking) {
+					stopSpeaking();
+					showNotification("🔇 Speech stopped", "info");
+				} else {
+					speakText(
+						"Speech output is now active. I will announce each execution step.",
+						true,
+					);
+				}
+			}
+
+			function initializeWebSocket() {
+				const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+				ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+				ws.onmessage = (event) => {
+					const data = JSON.parse(event.data);
+					handleRealtimeUpdate(data);
+				};
+
+				ws.onclose = () => {
+					setTimeout(initializeWebSocket, 1000);
+				};
+			}
+
+			function handleRealtimeUpdate(data) {
+				updateCount++;
+				document.getElementById("updateCount").textContent = updateCount;
+
+				const currentTime = Date.now();
+				if (executionStartTime > 0) {
+					const elapsed = currentTime - executionStartTime;
+					document.getElementById("speedValue").textContent = `${elapsed} ms`;
+					const speedPercentage = Math.min((elapsed / 10000) * 100, 100);
+					document.getElementById("speedBar").style.width =
+						`${speedPercentage}%`;
+				}
+
+				switch (data.type) {
+					case "status":
+						updateStatus(data.message);
+						logLive(`🔄 ${data.message}`);
+						break;
+					case "ai_thinking":
+						logLive(`🧠 ${data.message}`, "thinking");
+						break;
+					case "ai_decision":
+						logLive(
+							`⚡ Decision: ${data.decision.action} - ${data.decision.description}`,
+							"decision",
+						);
+						break;
+					case "action_start":
+						logLive(`🎯 Executing: ${data.description}`, "action");
+						// Speak the execution step
+						speakText(`Executing: ${data.description}`);
+						break;
+					case "action_complete":
+						const status = data.result.success ? "✅" : "❌";
+						logLive(
+							`${status} ${data.result.description}`,
+							data.result.success ? "success" : "error",
+						);
+						addExecutionStep(data.result);
+						// Speak completion status
+						if (data.result.success) {
+							speakText(`Completed: ${data.result.description}`);
+						} else {
+							speakText(`Failed: ${data.result.description}`);
+						}
+						break;
+					case "goal_completed":
+						logLive("🎉 Goal completed successfully!", "success");
+						speakText("Goal completed successfully!", true);
+						break;
+					case "execution_start":
+						executionStartTime = Date.now();
+						document
+							.getElementById("executionSpeed")
+							.classList.remove("hidden");
+						speakText("Starting execution now", true);
+						break;
+				}
+			}
+
+			function addExecutionStep(step) {
+				const container = document.getElementById("executionSteps");
+				const stepDiv = document.createElement("div");
+				stepDiv.className = `p-4 rounded-lg ${
+					step.success ? "status-success" : "status-error"
+				} action-step`;
+
+				const statusIcon = step.success ? "✅" : "❌";
+				const actionIcon = getActionIcon(step.action);
+
+				stepDiv.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-full ${
+													step.success ? "bg-green-100" : "bg-red-100"
+												} flex items-center justify-center flex-shrink-0">
+                            <span class="text-sm">${statusIcon}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-lg">${actionIcon}</span>
+                                <span class="font-semibold ${
+																	step.success
+																		? "text-green-800"
+																		: "text-red-800"
+																}">
+                                    ${step.description}
+                                </span>
+                            </div>
+                            <div class="text-sm ${
+															step.success ? "text-green-700" : "text-red-700"
+														} mb-2">
+                                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium mr-2">
+                                    ${step.action}
+                                </span>
+                                ${step.target ? `Target: ${step.target}` : ""}
+                                ${step.value ? ` | Value: ${step.value}` : ""}
+                            </div>
+                            ${
+															step.reasoning
+																? `
+                                <div class="text-xs text-gray-600 mt-1">
+                                    💭 ${step.reasoning}
+                                </div>
+                            `
+																: ""
+														}
+                            ${
+															step.error
+																? `
+                                <div class="text-xs text-red-600 mt-1">
+                                    ❌ ${step.error}
+                                </div>
+                            `
+																: ""
+														}
+                        </div>
+                    </div>
+                `;
+				container.appendChild(stepDiv);
+			}
+
+			function initializeVoiceCommands() {
+				if (
+					"webkitSpeechRecognition" in window ||
+					"SpeechRecognition" in window
+				) {
+					const SpeechRecognition =
+						window.SpeechRecognition || window.webkitSpeechRecognition;
+					recognition = new SpeechRecognition();
+					recognition.continuous = false;
+					recognition.interimResults = false;
+					recognition.lang = "en-US";
+					recognition.maxAlternatives = 1;
+
+					recognition.onstart = function () {
+						isListening = true;
+						document.getElementById("voiceBtn").classList.add("listening");
+						document.getElementById("voiceIcon").textContent = "🔴";
+						document.getElementById("voiceStatus").classList.remove("hidden");
+						speakText("Listening for your command", true);
+					};
+
+					recognition.onresult = function (event) {
+						const transcript = event.results[0][0].transcript;
+						document.getElementById("goalInput").value = transcript;
+						speakText(`I heard: ${transcript}. Executing now.`, true);
+						setTimeout(() => {
+							executeGoal();
+						}, 1000);
+					};
+
+					recognition.onerror = function (event) {
+						console.error("Speech recognition error:", event.error);
+						showNotification(
+							`❌ Voice recognition error: ${event.error}`,
+							"error",
+						);
+						speakText("Sorry, I could not understand your command", true);
+					};
+
+					recognition.onend = function () {
+						isListening = false;
+						document.getElementById("voiceBtn").classList.remove("listening");
+						document.getElementById("voiceIcon").textContent = "🎤";
+						document.getElementById("voiceStatus").classList.add("hidden");
+					};
+				} else {
+					document.getElementById("voiceBtn").style.display = "none";
+					showNotification(
+						"❌ Voice recognition not supported in this browser",
+						"error",
+					);
+				}
+			}
+
+			function toggleVoiceCommand() {
+				if (!recognition) {
+					showNotification("❌ Voice recognition not available", "error");
+					return;
+				}
+
+				if (isListening) {
+					recognition.stop();
+					speakText("Voice recognition stopped", true);
+				} else {
+					recognition.start();
+				}
+			}
+
+			function getActionIcon(action) {
+				const icons = {
+					navigate: "🌐",
+					click: "👆",
+					type: "⌨️",
+					wait: "⏱️",
+					scroll: "📜",
+					hover: "🖱️",
+					search: "🔍",
+					select: "✅",
+					verify: "🔍",
+				};
+				return icons[action] || "⚡";
+			}
+
+			function logLive(message, type = "info") {
+				const logContainer = document.getElementById("liveLogContent");
+				const timestamp = new Date().toLocaleTimeString();
+
+				const colorClass =
+					{
+						info: "text-blue-400",
+						success: "text-green-400",
+						error: "text-red-400",
+						thinking: "text-yellow-400",
+						decision: "text-purple-400",
+						action: "text-cyan-400",
+					}[type] || "text-green-400";
+
+				const logEntry = document.createElement("div");
+				logEntry.className = `${colorClass} text-sm mb-1`;
+				logEntry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+
+				logContainer.appendChild(logEntry);
+				logContainer.scrollTop = logContainer.scrollHeight;
+			}
+
+			function updateStatus(message) {
+				const statusElement = document.getElementById("currentStep");
+				if (statusElement) {
+					statusElement.textContent = message;
+				}
+			}
+
+			function showNotification(message, type = "info") {
+				// Create notification element
+				const notification = document.createElement("div");
+				notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 transform translate-x-full`;
+
+				const bgColor =
+					{
+						success: "bg-green-500",
+						error: "bg-red-500",
+						info: "bg-blue-500",
+						warning: "bg-yellow-500",
+					}[type] || "bg-blue-500";
+
+				notification.className += ` ${bgColor} text-white`;
+				notification.textContent = message;
+
+				document.body.appendChild(notification);
+
+				// Animate in
+				setTimeout(() => {
+					notification.classList.remove("translate-x-full");
+				}, 100);
+
+				// Remove after 3 seconds
+				setTimeout(() => {
+					notification.classList.add("translate-x-full");
+					setTimeout(() => {
+						document.body.removeChild(notification);
+					}, 300);
+				}, 3000);
+			}
+
+			async function executeGoal() {
+				const goalInput = document.getElementById("goalInput");
+				const goal = goalInput.value.trim();
+
+				if (!goal) {
+					showNotification("❌ Please enter a goal first", "error");
+					speakText("Please enter a goal first", true);
+					return;
+				}
+
+				// Reset UI
+				currentSteps = [];
+				updateCount = 0;
+				executionStartTime = Date.now();
+
+				// Show loading state
+				const executeBtn = document.getElementById("executeBtn");
+				const btnText = document.getElementById("btnText");
+				const btnLoader = document.getElementById("btnLoader");
+
+				executeBtn.disabled = true;
+				btnText.textContent = "Executing...";
+				btnLoader.classList.remove("hidden");
+
+				// Show results content
+				document.getElementById("welcomeState").classList.add("hidden");
+				document.getElementById("resultsContent").classList.remove("hidden");
+				document.getElementById("liveStatus").classList.remove("hidden");
+
+				// Clear previous results
+				document.getElementById("executionSteps").innerHTML = "";
+				document.getElementById("liveLogContent").innerHTML = "";
+
+				speakText(`Starting execution for: ${goal}`, true);
+				logLive(`🚀 Starting execution for goal: ${goal}`, "info");
+
+				try {
+					const response = await fetch("/api/execute-goal", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ goal: goal }),
+					});
+
+					const data = await response.json();
+
+					if (data.success) {
+						generatedTest = data.test_code;
+						fileName = data.filename;
+
+						// Show the generated test code
+						document.getElementById("testCode").textContent = generatedTest;
+
+						// Show execution summary
+						showExecutionSummary(data);
+
+						speakText("Execution completed successfully!", true);
+						logLive("🎉 Execution completed successfully!", "success");
+					} else {
+						throw new Error(data.error || "Execution failed");
+					}
+				} catch (error) {
+					console.error("Execution error:", error);
+					showNotification(`❌ Execution failed: ${error.message}`, "error");
+					speakText(`Execution failed: ${error.message}`, true);
+					logLive(`❌ Execution failed: ${error.message}`, "error");
+				} finally {
+					// Reset button state
+					executeBtn.disabled = false;
+					btnText.textContent = "⚡ Execute Goal";
+					btnLoader.classList.add("hidden");
+					document.getElementById("liveStatus").classList.add("hidden");
+				}
+			}
+
+			function showExecutionSummary(data) {
+				const summaryContainer = document.getElementById("executionSummary");
+				const executionTime = Date.now() - executionStartTime;
+
+				summaryContainer.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div class="text-2xl font-bold text-green-600">${
+									data.steps_count || currentSteps.length
+								}</div>
+                <div class="text-sm text-green-700">Steps Executed</div>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="text-2xl font-bold text-blue-600">${executionTime}ms</div>
+                <div class="text-sm text-blue-700">Execution Time</div>
+            </div>
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div class="text-2xl font-bold text-purple-600">${updateCount}</div>
+                <div class="text-sm text-purple-700">Real-time Updates</div>
+            </div>
+        </div>
+        <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+            <div class="text-sm font-medium text-gray-700 mb-2">Goal Achieved:</div>
+            <div class="text-gray-600">${
+							document.getElementById("goalInput").value
+						}</div>
+        </div>
+    `;
+			}
+
+			function useExample(index) {
+				if (index >= 0 && index < examples.length) {
+					document.getElementById("goalInput").value = examples[index];
+					speakText(`Example loaded: ${examples[index]}`, true);
+					showNotification(`📝 Example loaded: ${examples[index]}`, "info");
+				}
+			}
+
+			function copyCode() {
+				if (!generatedTest) {
+					showNotification("❌ No code to copy", "error");
+					return;
+				}
+
+				navigator.clipboard
+					.writeText(generatedTest)
+					.then(() => {
+						showNotification("📋 Code copied to clipboard!", "success");
+						speakText("Code copied to clipboard", true);
+					})
+					.catch((err) => {
+						console.error("Failed to copy code:", err);
+						showNotification("❌ Failed to copy code", "error");
+					});
+			}
+
+			function downloadTest() {
+				if (!generatedTest) {
+					showNotification("❌ No test to download", "error");
+					return;
+				}
+
+				const blob = new Blob([generatedTest], { type: "text/javascript" });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = fileName || "playwright_test.js";
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+
+				showNotification("💾 Test downloaded!", "success");
+				speakText("Test file downloaded successfully", true);
+			}
+
+			// Add keyboard shortcuts
+			document.addEventListener("keydown", function (event) {
+				// Ctrl+Enter to execute goal
+				if (event.ctrlKey && event.key === "Enter") {
+					event.preventDefault();
+					executeGoal();
+				}
+
+				// Escape to stop voice recognition
+				if (event.key === "Escape" && isListening) {
+					event.preventDefault();
+					recognition.stop();
+				}
+			});
+
+			// Initialize everything when page loads
+			document.addEventListener("DOMContentLoaded", function () {
+				initializeVoiceCommands();
+				initializeSpeechSynthesis();
+				initializeWebSocket();
+
+				// Focus on goal input
+				document.getElementById("goalInput").focus();
+
+				// Initial greeting
+				setTimeout(() => {
+					speakText(
+						"Regressio Turbo AI is ready. Enter your automation goal or use voice commands.",
+						true,
+					);
+				}, 1000);
+			});
+		</script>
+	</body>
+</html>
