@@ -71,14 +71,6 @@
 				background: linear-gradient(45deg, #ff0000, #ff4444);
 				animation: listening 0.5s infinite alternate;
 			}
-			.speaker-button {
-				background: linear-gradient(45deg, #4ecdc4, #44a08d);
-				animation: pulse 2s infinite;
-			}
-			.speaker-button.speaking {
-				background: linear-gradient(45deg, #ff9500, #ffb84d);
-				animation: speaking 0.8s infinite alternate;
-			}
 			@keyframes pulse {
 				0% {
 					transform: scale(1);
@@ -96,14 +88,6 @@
 				}
 				100% {
 					transform: scale(1.1) rotate(3deg);
-				}
-			}
-			@keyframes speaking {
-				0% {
-					transform: scale(1);
-				}
-				100% {
-					transform: scale(1.15);
 				}
 			}
 			.live-indicator {
@@ -169,9 +153,6 @@
 				50% {
 					height: 20px;
 				}
-			}
-			.tts-control {
-				background: linear-gradient(45deg, #10b981, #059669);
 			}
 		</style>
 	</head>
@@ -243,39 +224,6 @@ Examples:
 								class="voice-button text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl">
 								<span id="voiceIcon">🎤</span>
 							</button>
-							<button
-								onclick="toggleSpeechOutput()"
-								id="speakerBtn"
-								class="speaker-button text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl"
-								title="Toggle speech output">
-								<span id="speakerIcon">🔊</span>
-							</button>
-						</div>
-
-						<!-- TTS Controls -->
-						<div
-							class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-3">
-							<div class="flex items-center justify-between mb-2">
-								<span class="text-sm font-medium text-green-800"
-									>🔊 Speech Settings</span
-								>
-								<label class="flex items-center">
-									<input type="checkbox" id="ttsEnabled" checked class="mr-2" />
-									<span class="text-xs text-green-700">Auto-speak steps</span>
-								</label>
-							</div>
-							<div class="flex items-center gap-2">
-								<label class="text-xs text-green-700">Speed:</label>
-								<input
-									type="range"
-									id="speechRate"
-									min="0.5"
-									max="2"
-									step="0.1"
-									value="1"
-									class="flex-1" />
-								<span id="rateValue" class="text-xs text-green-700">1x</span>
-							</div>
 						</div>
 
 						<div
@@ -295,20 +243,6 @@ Examples:
 							</div>
 							<div class="text-xs text-red-600 mt-1">
 								Speak your goal clearly
-							</div>
-						</div>
-
-						<div
-							id="speechStatus"
-							class="hidden bg-orange-50 border border-orange-200 rounded-lg p-3">
-							<div class="flex items-center gap-2">
-								<div class="loader"></div>
-								<span class="text-sm font-medium text-orange-800"
-									>Speaking...</span
-								>
-							</div>
-							<div id="speechText" class="text-xs text-orange-600 mt-1">
-								Current speech output
 							</div>
 						</div>
 					</div>
@@ -402,7 +336,7 @@ Examples:
 						</h2>
 						<p class="text-gray-600 mb-6 max-w-md">
 							Describe any web goal in natural language or use voice commands
-							and watch the AI execute it at lightning speed with audio feedback
+							and watch the AI execute it at lightning speed
 						</p>
 						<div
 							class="flex items-center justify-center gap-6 text-sm text-gray-500">
@@ -417,7 +351,7 @@ Examples:
 							</div>
 							<div class="flex items-center gap-2">
 								<span class="w-2 h-2 bg-purple-500 rounded-full"></span>
-								<span>Audio Feedback</span>
+								<span>Turbo Speed</span>
 							</div>
 						</div>
 					</div>
@@ -466,7 +400,7 @@ Examples:
 									🎯 AI Decision Steps
 								</h2>
 								<p class="text-sm text-gray-600">
-									Lightning-fast AI decisions and actions with audio feedback
+									Lightning-fast AI decisions and actions
 								</p>
 							</div>
 							<div class="p-6">
@@ -534,9 +468,6 @@ Examples:
 			let isListening = false;
 			let updateCount = 0;
 			let executionStartTime = 0;
-			let speechSynthesis = null;
-			let isSpeaking = false;
-			let speechEnabled = true;
 
 			const examples = [
 				"go to youtube and play music",
@@ -544,107 +475,6 @@ Examples:
 				"open amazon and find laptops",
 				"navigate to reddit",
 			];
-
-			function initializeSpeechSynthesis() {
-				if ("speechSynthesis" in window) {
-					speechSynthesis = window.speechSynthesis;
-
-					// Update rate control
-					document
-						.getElementById("speechRate")
-						.addEventListener("input", (e) => {
-							document.getElementById("rateValue").textContent =
-								e.target.value + "x";
-						});
-
-					// Update speech enabled checkbox
-					document
-						.getElementById("ttsEnabled")
-						.addEventListener("change", (e) => {
-							speechEnabled = e.target.checked;
-							if (!speechEnabled && isSpeaking) {
-								stopSpeaking();
-							}
-						});
-				} else {
-					// Hide speech controls if not supported
-					document.getElementById("speakerBtn").style.display = "none";
-					document.querySelector(".tts-control").style.display = "none";
-					showNotification(
-						"❌ Speech synthesis not supported in this browser",
-						"error",
-					);
-				}
-			}
-
-			function speakText(text, priority = false) {
-				if (!speechSynthesis || !speechEnabled || (!priority && isSpeaking)) {
-					return;
-				}
-
-				// Cancel current speech if priority message
-				if (priority && isSpeaking) {
-					stopSpeaking();
-				}
-
-				// Clean up the text for better speech
-				const cleanText = text
-					.replace(/🎯|⚡|🌐|👆|⌨️|🔄|⏱️|📜|🖱️|✅|❌|🧠|🔍|🛒|📱/g, "") // Remove emojis
-					.replace(/Executing:/g, "Now executing:")
-					.replace(/API:/g, "A P I:")
-					.trim();
-
-				if (!cleanText) return;
-
-				const utterance = new SpeechSynthesisUtterance(cleanText);
-				utterance.rate = parseFloat(
-					document.getElementById("speechRate").value,
-				);
-				utterance.pitch = 1;
-				utterance.volume = 0.8;
-
-				utterance.onstart = () => {
-					isSpeaking = true;
-					document.getElementById("speakerBtn").classList.add("speaking");
-					document.getElementById("speechStatus").classList.remove("hidden");
-					document.getElementById("speechText").textContent = cleanText;
-				};
-
-				utterance.onend = () => {
-					isSpeaking = false;
-					document.getElementById("speakerBtn").classList.remove("speaking");
-					document.getElementById("speechStatus").classList.add("hidden");
-				};
-
-				utterance.onerror = () => {
-					isSpeaking = false;
-					document.getElementById("speakerBtn").classList.remove("speaking");
-					document.getElementById("speechStatus").classList.add("hidden");
-				};
-
-				speechSynthesis.speak(utterance);
-			}
-
-			function stopSpeaking() {
-				if (speechSynthesis && isSpeaking) {
-					speechSynthesis.cancel();
-					isSpeaking = false;
-					document.getElementById("speakerBtn").classList.remove("speaking");
-					document.getElementById("speechStatus").classList.add("hidden");
-				}
-			}
-
-			function toggleSpeechOutput() {
-				if (isSpeaking) {
-					stopSpeaking();
-					showNotification("🔇 Speech stopped", "info");
-				} else {
-					speakText(
-						"Speech output is now active. I will announce each execution step.",
-						true,
-					);
-				}
-			}
 
 			function initializeWebSocket() {
 				const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -689,8 +519,6 @@ Examples:
 						break;
 					case "action_start":
 						logLive(`🎯 Executing: ${data.description}`, "action");
-						// Speak the execution step
-						speakText(`Executing: ${data.description}`);
 						break;
 					case "action_complete":
 						const status = data.result.success ? "✅" : "❌";
@@ -699,23 +527,15 @@ Examples:
 							data.result.success ? "success" : "error",
 						);
 						addExecutionStep(data.result);
-						// Speak completion status
-						if (data.result.success) {
-							speakText(`Completed: ${data.result.description}`);
-						} else {
-							speakText(`Failed: ${data.result.description}`);
-						}
 						break;
 					case "goal_completed":
 						logLive("🎉 Goal completed successfully!", "success");
-						speakText("Goal completed successfully!", true);
 						break;
 					case "execution_start":
 						executionStartTime = Date.now();
 						document
 							.getElementById("executionSpeed")
 							.classList.remove("hidden");
-						speakText("Starting execution now", true);
 						break;
 				}
 			}
@@ -792,39 +612,38 @@ Examples:
 					recognition.continuous = false;
 					recognition.interimResults = false;
 					recognition.lang = "en-US";
-					recognition.maxAlternatives = 1;
 
-					recognition.onstart = function () {
+					recognition.onstart = () => {
 						isListening = true;
 						document.getElementById("voiceBtn").classList.add("listening");
 						document.getElementById("voiceIcon").textContent = "🔴";
 						document.getElementById("voiceStatus").classList.remove("hidden");
-						speakText("Listening for your command", true);
 					};
 
-					recognition.onresult = function (event) {
+					recognition.onend = () => {
+						isListening = false;
+						document.getElementById("voiceBtn").classList.remove("listening");
+						document.getElementById("voiceIcon").textContent = "🎤";
+						document.getElementById("voiceStatus").classList.add("hidden");
+					};
+
+					recognition.onresult = (event) => {
 						const transcript = event.results[0][0].transcript;
 						document.getElementById("goalInput").value = transcript;
-						speakText(`I heard: ${transcript}. Executing now.`, true);
+						showNotification(
+							`🎤 Voice command captured: "${transcript}"`,
+							"success",
+						);
 						setTimeout(() => {
 							executeGoal();
 						}, 1000);
 					};
 
-					recognition.onerror = function (event) {
-						console.error("Speech recognition error:", event.error);
+					recognition.onerror = (event) => {
 						showNotification(
 							`❌ Voice recognition error: ${event.error}`,
 							"error",
 						);
-						speakText("Sorry, I could not understand your command", true);
-					};
-
-					recognition.onend = function () {
-						isListening = false;
-						document.getElementById("voiceBtn").classList.remove("listening");
-						document.getElementById("voiceIcon").textContent = "🎤";
-						document.getElementById("voiceStatus").classList.add("hidden");
 					};
 				} else {
 					document.getElementById("voiceBtn").style.display = "none";
@@ -843,10 +662,119 @@ Examples:
 
 				if (isListening) {
 					recognition.stop();
-					speakText("Voice recognition stopped", true);
 				} else {
 					recognition.start();
 				}
+			}
+
+			function useExample(index) {
+				document.getElementById("goalInput").value = examples[index];
+				document.getElementById("goalInput").focus();
+			}
+
+			async function executeGoal() {
+				const goal = document.getElementById("goalInput").value.trim();
+
+				if (!goal) {
+					showNotification("❌ Please provide a goal to execute", "error");
+					return;
+				}
+
+				setLoading(true);
+				showResults();
+				clearResults();
+				updateCount = 0;
+				executionStartTime = Date.now();
+
+				updateStatus("⚡ Starting turbo execution...");
+				logLive("⚡ Starting turbo execution...");
+				logLive("🧠 AI is analyzing the goal...");
+
+				try {
+					const result = await callAPI("execute-goal", { goal: goal });
+
+					if (result.success) {
+						updateStatus("✅ Goal execution completed!");
+						logLive("✅ Goal execution completed successfully!");
+
+						currentSteps = result.steps || [];
+						generatedTest = result.testCode || "";
+						fileName = result.fileName || "";
+
+						displayTestCode(result.testCode || "");
+						displayExecutionSummary(result.executionSummary || {});
+
+						if (result.fileName) {
+							logLive(`📁 Test file saved as: ${result.fileName}`);
+						}
+
+						showNotification("✅ Goal executed successfully!", "success");
+					} else {
+						throw new Error(result.error || "Unknown error occurred");
+					}
+				} catch (error) {
+					updateStatus("❌ Execution failed");
+					logLive(`❌ Error: ${error.message}`, "error");
+					showNotification(`❌ Error: ${error.message}`, "error");
+				} finally {
+					setLoading(false);
+				}
+			}
+
+			async function callAPI(endpoint, data) {
+				updateStatus(`🌐 Calling API: ${endpoint}...`);
+				logLive(`🌐 Calling API: ${endpoint}...`);
+
+				const response = await fetch(`/api/${endpoint}`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(data),
+				});
+
+				if (!response.ok) {
+					const error = await response.json();
+					throw new Error(error.error || `API error: ${response.statusText}`);
+				}
+
+				return await response.json();
+			}
+
+			function displayExecutionSummary(summary) {
+				const container = document.getElementById("executionSummary");
+				container.innerHTML = "";
+
+				const summaryDiv = document.createElement("div");
+				summaryDiv.className = "grid grid-cols-2 md:grid-cols-4 gap-4";
+
+				const executionTime =
+					executionStartTime > 0 ? Date.now() - executionStartTime : 0;
+
+				summaryDiv.innerHTML = `
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <div class="text-2xl font-bold text-blue-800">${
+													summary.totalSteps || 0
+												}</div>
+                        <div class="text-sm text-blue-600">Total Steps</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <div class="text-2xl font-bold text-green-800">${
+													summary.successfulSteps || 0
+												}</div>
+                        <div class="text-sm text-green-600">Successful</div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <div class="text-2xl font-bold text-purple-800">${executionTime}ms</div>
+                        <div class="text-sm text-purple-600">Execution Time</div>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-lg">
+                        <div class="text-2xl font-bold text-orange-800">${
+													summary.goalCompleted ? "✅" : "❌"
+												}</div>
+                        <div class="text-sm text-orange-600">Goal Status</div>
+                    </div>
+                `;
+
+				container.appendChild(summaryDiv);
 			}
 
 			function getActionIcon(action) {
@@ -854,260 +782,154 @@ Examples:
 					navigate: "🌐",
 					click: "👆",
 					type: "⌨️",
+					press: "🔄",
 					wait: "⏱️",
 					scroll: "📜",
+					complete: "🎯",
 					hover: "🖱️",
-					search: "🔍",
-					select: "✅",
-					verify: "🔍",
 				};
-				return icons[action] || "⚡";
+				return icons[action] || "🔧";
 			}
 
-			function logLive(message, type = "info") {
-				const logContainer = document.getElementById("liveLogContent");
-				const timestamp = new Date().toLocaleTimeString();
-
-				const colorClass =
-					{
-						info: "text-blue-400",
-						success: "text-green-400",
-						error: "text-red-400",
-						thinking: "text-yellow-400",
-						decision: "text-purple-400",
-						action: "text-cyan-400",
-					}[type] || "text-green-400";
-
-				const logEntry = document.createElement("div");
-				logEntry.className = `${colorClass} text-sm mb-1`;
-				logEntry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
-
-				logContainer.appendChild(logEntry);
-				logContainer.scrollTop = logContainer.scrollHeight;
-			}
-
-			function updateStatus(message) {
-				const statusElement = document.getElementById("currentStep");
-				if (statusElement) {
-					statusElement.textContent = message;
-				}
-			}
-
-			function showNotification(message, type = "info") {
-				// Create notification element
-				const notification = document.createElement("div");
-				notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 transform translate-x-full`;
-
-				const bgColor =
-					{
-						success: "bg-green-500",
-						error: "bg-red-500",
-						info: "bg-blue-500",
-						warning: "bg-yellow-500",
-					}[type] || "bg-blue-500";
-
-				notification.className += ` ${bgColor} text-white`;
-				notification.textContent = message;
-
-				document.body.appendChild(notification);
-
-				// Animate in
-				setTimeout(() => {
-					notification.classList.remove("translate-x-full");
-				}, 100);
-
-				// Remove after 3 seconds
-				setTimeout(() => {
-					notification.classList.add("translate-x-full");
-					setTimeout(() => {
-						document.body.removeChild(notification);
-					}, 300);
-				}, 3000);
-			}
-
-			async function executeGoal() {
-				const goalInput = document.getElementById("goalInput");
-				const goal = goalInput.value.trim();
-
-				if (!goal) {
-					showNotification("❌ Please enter a goal first", "error");
-					speakText("Please enter a goal first", true);
-					return;
-				}
-
-				// Reset UI
-				currentSteps = [];
-				updateCount = 0;
-				executionStartTime = Date.now();
-
-				// Show loading state
-				const executeBtn = document.getElementById("executeBtn");
-				const btnText = document.getElementById("btnText");
-				const btnLoader = document.getElementById("btnLoader");
-
-				executeBtn.disabled = true;
-				btnText.textContent = "Executing...";
-				btnLoader.classList.remove("hidden");
-
-				// Show results content
-				document.getElementById("welcomeState").classList.add("hidden");
-				document.getElementById("resultsContent").classList.remove("hidden");
-				document.getElementById("liveStatus").classList.remove("hidden");
-
-				// Clear previous results
-				document.getElementById("executionSteps").innerHTML = "";
-				document.getElementById("liveLogContent").innerHTML = "";
-
-				speakText(`Starting execution for: ${goal}`, true);
-				logLive(`🚀 Starting execution for goal: ${goal}`, "info");
-
-				try {
-					const response = await fetch("/api/execute-goal", {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({ goal: goal }),
-					});
-
-					const data = await response.json();
-
-					if (data.success) {
-						generatedTest = data.test_code;
-						fileName = data.filename;
-
-						// Show the generated test code
-						document.getElementById("testCode").textContent = generatedTest;
-
-						// Show execution summary
-						showExecutionSummary(data);
-
-						speakText("Execution completed successfully!", true);
-						logLive("🎉 Execution completed successfully!", "success");
-					} else {
-						throw new Error(data.error || "Execution failed");
-					}
-				} catch (error) {
-					console.error("Execution error:", error);
-					showNotification(`❌ Execution failed: ${error.message}`, "error");
-					speakText(`Execution failed: ${error.message}`, true);
-					logLive(`❌ Execution failed: ${error.message}`, "error");
-				} finally {
-					// Reset button state
-					executeBtn.disabled = false;
-					btnText.textContent = "⚡ Execute Goal";
-					btnLoader.classList.add("hidden");
-					document.getElementById("liveStatus").classList.add("hidden");
-				}
-			}
-
-			function showExecutionSummary(data) {
-				const summaryContainer = document.getElementById("executionSummary");
-				const executionTime = Date.now() - executionStartTime;
-
-				summaryContainer.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div class="text-2xl font-bold text-green-600">${
-									data.steps_count || currentSteps.length
-								}</div>
-                <div class="text-sm text-green-700">Steps Executed</div>
-            </div>
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div class="text-2xl font-bold text-blue-600">${executionTime}ms</div>
-                <div class="text-sm text-blue-700">Execution Time</div>
-            </div>
-            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <div class="text-2xl font-bold text-purple-600">${updateCount}</div>
-                <div class="text-sm text-purple-700">Real-time Updates</div>
-            </div>
-        </div>
-        <div class="mt-4 p-4 bg-gray-50 rounded-lg">
-            <div class="text-sm font-medium text-gray-700 mb-2">Goal Achieved:</div>
-            <div class="text-gray-600">${
-							document.getElementById("goalInput").value
-						}</div>
-        </div>
-    `;
-			}
-
-			function useExample(index) {
-				if (index >= 0 && index < examples.length) {
-					document.getElementById("goalInput").value = examples[index];
-					speakText(`Example loaded: ${examples[index]}`, true);
-					showNotification(`📝 Example loaded: ${examples[index]}`, "info");
-				}
+			function displayTestCode(code) {
+				document.getElementById("testCode").textContent =
+					code || "No test code generated";
 			}
 
 			function copyCode() {
 				if (!generatedTest) {
-					showNotification("❌ No code to copy", "error");
+					showNotification("❌ No test code to copy", "error");
 					return;
 				}
 
 				navigator.clipboard
 					.writeText(generatedTest)
 					.then(() => {
-						showNotification("📋 Code copied to clipboard!", "success");
-						speakText("Code copied to clipboard", true);
+						showNotification("✅ Test code copied to clipboard!", "success");
 					})
-					.catch((err) => {
-						console.error("Failed to copy code:", err);
-						showNotification("❌ Failed to copy code", "error");
+					.catch(() => {
+						const textArea = document.createElement("textarea");
+						textArea.value = generatedTest;
+						document.body.appendChild(textArea);
+						textArea.select();
+						document.execCommand("copy");
+						document.body.removeChild(textArea);
+						showNotification("✅ Test code copied to clipboard!", "success");
 					});
 			}
 
 			function downloadTest() {
 				if (!generatedTest) {
-					showNotification("❌ No test to download", "error");
+					showNotification("❌ No test code to download", "error");
 					return;
 				}
 
 				const blob = new Blob([generatedTest], { type: "text/javascript" });
-				const url = URL.createObjectURL(blob);
+				const url = window.URL.createObjectURL(blob);
 				const a = document.createElement("a");
 				a.href = url;
-				a.download = fileName || "playwright_test.js";
+				a.download = fileName || `test-${Date.now()}.spec.js`;
 				document.body.appendChild(a);
 				a.click();
+				window.URL.revokeObjectURL(url);
 				document.body.removeChild(a);
-				URL.revokeObjectURL(url);
-
-				showNotification("💾 Test downloaded!", "success");
-				speakText("Test file downloaded successfully", true);
+				showNotification("💾 Test file downloaded!", "success");
 			}
 
-			// Add keyboard shortcuts
-			document.addEventListener("keydown", function (event) {
-				// Ctrl+Enter to execute goal
-				if (event.ctrlKey && event.key === "Enter") {
-					event.preventDefault();
-					executeGoal();
+			function showNotification(message, type = "info") {
+				const notification = document.createElement("div");
+				const bgColor =
+					type === "error"
+						? "bg-red-500"
+						: type === "success"
+						  ? "bg-green-500"
+						  : "bg-blue-500";
+				notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-transform duration-300`;
+				notification.textContent = message;
+				notification.style.transform = "translateX(400px)";
+
+				document.body.appendChild(notification);
+
+				setTimeout(() => {
+					notification.style.transform = "translateX(0)";
+				}, 100);
+
+				setTimeout(() => {
+					notification.style.transform = "translateX(400px)";
+					setTimeout(() => {
+						document.body.removeChild(notification);
+					}, 300);
+				}, 3000);
+			}
+
+			function setLoading(isLoading) {
+				document.getElementById("executeBtn").disabled = isLoading;
+				document
+					.getElementById("btnLoader")
+					.classList.toggle("hidden", !isLoading);
+				document.getElementById("btnText").textContent = isLoading
+					? "Executing..."
+					: "⚡ Execute Goal";
+
+				if (isLoading) {
+					document.getElementById("liveStatus").classList.remove("hidden");
+					document.getElementById("currentStep").textContent =
+						"Initializing AI execution...";
+				} else {
+					document.getElementById("liveStatus").classList.add("hidden");
+				}
+			}
+
+			function updateStatus(message) {
+				document.getElementById("currentStep").textContent = message;
+			}
+
+			function logLive(message, type = "info") {
+				const logContent = document.getElementById("liveLogContent");
+				const logEntry = document.createElement("div");
+
+				const timestamp = new Date().toLocaleTimeString();
+				logEntry.textContent = `[${timestamp}] ${message}`;
+
+				if (type === "error") {
+					logEntry.style.color = "#ef4444";
+				} else if (type === "success") {
+					logEntry.style.color = "#10b981";
+				} else if (type === "thinking") {
+					logEntry.style.color = "#8b5cf6";
+				} else if (type === "decision") {
+					logEntry.style.color = "#3b82f6";
+				} else if (type === "action") {
+					logEntry.style.color = "#f59e0b";
 				}
 
-				// Escape to stop voice recognition
-				if (event.key === "Escape" && isListening) {
-					event.preventDefault();
-					recognition.stop();
+				logContent.appendChild(logEntry);
+				logContent.scrollTop = logContent.scrollHeight;
+			}
+
+			function showResults() {
+				document.getElementById("welcomeState").classList.add("hidden");
+				document.getElementById("resultsContent").classList.remove("hidden");
+			}
+
+			function clearResults() {
+				document.getElementById("executionSteps").innerHTML = "";
+				document.getElementById("testCode").textContent = "";
+				document.getElementById("executionSummary").innerHTML = "";
+				document.getElementById("liveLogContent").innerHTML = "";
+			}
+
+			// Keyboard shortcut
+			document.getElementById("goalInput").addEventListener("keydown", (e) => {
+				if (e.ctrlKey && e.key === "Enter") {
+					executeGoal();
 				}
 			});
 
-			// Initialize everything when page loads
-			document.addEventListener("DOMContentLoaded", function () {
-				initializeVoiceCommands();
-				initializeSpeechSynthesis();
+			// Initialize everything on page load
+			document.addEventListener("DOMContentLoaded", () => {
 				initializeWebSocket();
-
-				// Focus on goal input
-				document.getElementById("goalInput").focus();
-
-				// Initial greeting
-				setTimeout(() => {
-					speakText(
-						"Regressio Turbo AI is ready. Enter your automation goal or use voice commands.",
-						true,
-					);
-				}, 1000);
+				initializeVoiceCommands();
 			});
 		</script>
 	</body>
