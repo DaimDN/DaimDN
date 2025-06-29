@@ -1,0 +1,1192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Playwright Automation Studio | Enterprise Testing Platform</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+			rel="stylesheet" />
+		<script src="https://cdn.tailwindcss.com"></script>
+		<script>
+			tailwind.config = {
+				theme: {
+					extend: {
+						fontFamily: {
+							sans: ["Inter", "system-ui", "sans-serif"],
+						},
+						animation: {
+							"slide-in": "slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+							"pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+							blink: "blink 2s ease-in-out infinite",
+							"fade-in": "fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+							"scale-in": "scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+							"slide-up": "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+							glow: "glow 2s ease-in-out infinite alternate",
+						},
+						keyframes: {
+							slideIn: {
+								"0%": { opacity: "0", transform: "translateY(20px)" },
+								"100%": { opacity: "1", transform: "translateY(0)" },
+							},
+							slideUp: {
+								"0%": { opacity: "0", transform: "translateY(10px)" },
+								"100%": { opacity: "1", transform: "translateY(0)" },
+							},
+							blink: {
+								"0%, 100%": { opacity: "1" },
+								"50%": { opacity: "0.3" },
+							},
+							fadeIn: {
+								"0%": { opacity: "0" },
+								"100%": { opacity: "1" },
+							},
+							scaleIn: {
+								"0%": { opacity: "0", transform: "scale(0.9)" },
+								"100%": { opacity: "1", transform: "scale(1)" },
+							},
+							glow: {
+								"0%": { boxShadow: "0 0 20px rgba(59, 130, 246, 0.5)" },
+								"100%": { boxShadow: "0 0 30px rgba(59, 130, 246, 0.8)" },
+							},
+						},
+						colors: {
+							primary: {
+								50: "#eff6ff",
+								100: "#dbeafe",
+								500: "#3b82f6",
+								600: "#2563eb",
+								700: "#1d4ed8",
+								900: "#1e3a8a",
+							},
+							accent: {
+								500: "#8b5cf6",
+								600: "#7c3aed",
+							},
+						},
+						boxShadow: {
+							glow: "0 0 20px rgba(59, 130, 246, 0.3)",
+							"glow-lg": "0 0 40px rgba(59, 130, 246, 0.2)",
+							enterprise:
+								"0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05)",
+							card: "0 2px 12px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02)",
+						},
+					},
+				},
+			};
+		</script>
+		<style>
+			body {
+				font-family:
+					"Inter",
+					system-ui,
+					-apple-system,
+					sans-serif;
+				font-feature-settings: "cv11", "ss01";
+				text-rendering: optimizeLegibility;
+				-webkit-font-smoothing: antialiased;
+				-moz-osx-font-smoothing: grayscale;
+			}
+
+			.code-block {
+				background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+				color: #f1f5f9;
+				font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono",
+					"Source Code Pro", monospace;
+				border-radius: 16px;
+				padding: 24px;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				font-size: 14px;
+				line-height: 1.7;
+				border: 1px solid rgba(148, 163, 184, 0.1);
+				box-shadow:
+					0 20px 40px rgba(0, 0, 0, 0.15),
+					inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			}
+
+			.glass-effect {
+				background: rgba(255, 255, 255, 0.8);
+				backdrop-filter: blur(20px) saturate(180%);
+				border: 1px solid rgba(255, 255, 255, 0.2);
+				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+			}
+
+			.glass-dark {
+				background: rgba(15, 23, 42, 0.8);
+				backdrop-filter: blur(20px) saturate(180%);
+				border: 1px solid rgba(255, 255, 255, 0.05);
+			}
+
+			.gradient-border {
+				position: relative;
+				background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+				padding: 2px;
+				border-radius: 16px;
+			}
+
+			.gradient-border-inner {
+				background: white;
+				border-radius: 14px;
+				position: relative;
+				z-index: 1;
+			}
+
+			.scrollbar-thin {
+				scrollbar-width: thin;
+				scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+			}
+
+			.scrollbar-thin::-webkit-scrollbar {
+				width: 6px;
+			}
+
+			.scrollbar-thin::-webkit-scrollbar-track {
+				background: transparent;
+			}
+
+			.scrollbar-thin::-webkit-scrollbar-thumb {
+				background: rgba(148, 163, 184, 0.3);
+				border-radius: 3px;
+			}
+
+			.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+				background: rgba(148, 163, 184, 0.5);
+			}
+
+			.enterprise-input {
+				background: white;
+				border: 2px solid #e2e8f0;
+				border-radius: 12px;
+				padding: 16px 20px;
+				font-size: 15px;
+				font-weight: 500;
+				transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+				box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+			}
+
+			.enterprise-input:focus {
+				outline: none;
+				border-color: #3b82f6;
+				box-shadow:
+					0 0 0 4px rgba(59, 130, 246, 0.1),
+					0 4px 12px rgba(0, 0, 0, 0.1);
+				transform: translateY(-1px);
+			}
+
+			.enterprise-button {
+				background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+				border: none;
+				border-radius: 12px;
+				padding: 16px 32px;
+				font-size: 15px;
+				font-weight: 600;
+				color: white;
+				cursor: pointer;
+				transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+				box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+				position: relative;
+				overflow: hidden;
+			}
+
+			.enterprise-button::before {
+				content: "";
+				position: absolute;
+				top: 0;
+				left: -100%;
+				width: 100%;
+				height: 100%;
+				background: linear-gradient(
+					90deg,
+					transparent,
+					rgba(255, 255, 255, 0.2),
+					transparent
+				);
+				transition: left 0.5s;
+			}
+
+			.enterprise-button:hover::before {
+				left: 100%;
+			}
+
+			.enterprise-button:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 8px 25px rgba(59, 130, 246, 0.35);
+			}
+
+			.enterprise-button:active {
+				transform: translateY(0);
+			}
+
+			.status-indicator {
+				position: relative;
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				background: rgba(16, 185, 129, 0.1);
+				border: 1px solid rgba(16, 185, 129, 0.2);
+				padding: 8px 16px;
+				border-radius: 50px;
+				font-size: 13px;
+				font-weight: 600;
+				color: #059669;
+			}
+
+			.status-dot {
+				width: 8px;
+				height: 8px;
+				background: #10b981;
+				border-radius: 50%;
+				animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+				box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+			}
+
+			@keyframes pulse {
+				0% {
+					transform: scale(0.95);
+					box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+				}
+				70% {
+					transform: scale(1);
+					box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+				}
+				100% {
+					transform: scale(0.95);
+					box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+				}
+			}
+
+			.enterprise-card {
+				background: white;
+				border: 1px solid #e2e8f0;
+				border-radius: 16px;
+				padding: 24px;
+				box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+				transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+			}
+
+			.enterprise-card:hover {
+				border-color: #cbd5e1;
+				box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+				transform: translateY(-2px);
+			}
+
+			.quick-action {
+				background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+				border: 1px solid #e2e8f0;
+				border-radius: 10px;
+				padding: 12px 20px;
+				font-size: 14px;
+				font-weight: 500;
+				color: #475569;
+				cursor: pointer;
+				transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+			}
+
+			.quick-action:hover {
+				background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+				border-color: #cbd5e1;
+				color: #334155;
+				transform: translateY(-1px);
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+			}
+
+			.message-bubble {
+				border-radius: 20px;
+				padding: 16px 20px;
+				margin: 8px 0;
+				font-size: 14px;
+				line-height: 1.5;
+				font-weight: 500;
+				box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+			}
+
+			.message-user {
+				background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+				color: white;
+				margin-left: 60px;
+				border-bottom-right-radius: 6px;
+			}
+
+			.message-system {
+				background: white;
+				border: 1px solid #e2e8f0;
+				color: #334155;
+				margin-right: 60px;
+				border-bottom-left-radius: 6px;
+			}
+
+			.message-success {
+				background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+				border: 1px solid #a7f3d0;
+				color: #065f46;
+				margin-right: 60px;
+				border-bottom-left-radius: 6px;
+			}
+
+			.message-error {
+				background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+				border: 1px solid #fecaca;
+				color: #991b1b;
+				margin-right: 60px;
+				border-bottom-left-radius: 6px;
+			}
+
+			.message-ai {
+				background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+				border: 1px solid #c4b5fd;
+				color: #581c87;
+				margin-right: 60px;
+				border-bottom-left-radius: 6px;
+			}
+
+			.message-info {
+				background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+				border: 1px solid #93c5fd;
+				color: #1e40af;
+				margin-right: 60px;
+				border-bottom-left-radius: 6px;
+			}
+
+			.brand-gradient {
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				-webkit-background-clip: text;
+				-webkit-text-fill-color: transparent;
+				background-clip: text;
+			}
+
+			/* Enhanced mobile responsiveness */
+			@media (max-width: 1024px) {
+				body {
+					min-width: auto;
+					overflow-x: hidden;
+				}
+
+				.desktop-only {
+					display: none;
+				}
+
+				.mobile-adapt {
+					flex-direction: column;
+				}
+			}
+		</style>
+	</head>
+	<body
+		class="bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50 min-h-screen">
+		<!-- Main Container -->
+		<div class="h-screen flex flex-col">
+			<!-- Professional Header -->
+			<header class="glass-effect px-8 py-6 border-b border-gray-200/50">
+				<div class="flex items-center justify-between">
+					<div class="flex items-center space-x-6">
+						<div class="relative">
+							<div
+								class="w-14 h-14 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 rounded-2xl flex items-center justify-center shadow-lg animate-glow">
+								<svg
+									class="w-7 h-7 text-white"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+								</svg>
+							</div>
+							<div
+								class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white animate-pulse"></div>
+						</div>
+						<div>
+							<h1 class="text-3xl font-bold brand-gradient">
+								Playwright Studio
+							</h1>
+							<p class="text-sm font-medium text-gray-600 mt-1">
+								Enterprise AI Testing Platform
+							</p>
+						</div>
+					</div>
+
+					<div class="flex items-center space-x-6">
+						<div class="hidden lg:flex items-center space-x-4">
+							<div class="text-right">
+								<p class="text-sm font-semibold text-gray-900">
+									Test Environment
+								</p>
+								<p class="text-xs text-gray-500">Production Ready</p>
+							</div>
+							<div
+								class="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center">
+								<svg
+									class="w-5 h-5 text-white"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+								</svg>
+							</div>
+						</div>
+
+						<div class="status-indicator">
+							<div class="status-dot"></div>
+							<span id="connectionStatus">Connected</span>
+						</div>
+					</div>
+				</div>
+			</header>
+
+			<!-- Main Content Area -->
+			<div class="flex-1 flex min-h-0 mobile-adapt">
+				<!-- Chat Section -->
+				<main class="flex-1 flex flex-col min-h-0 bg-white/50">
+					<!-- Messages Container -->
+					<div
+						id="chatMessages"
+						class="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-thin">
+						<div class="max-w-2xl mx-auto text-center py-16">
+							<div
+								class="w-20 h-20 bg-gradient-to-br from-blue-50 to-purple-50 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-card">
+								<svg
+									class="w-10 h-10 text-blue-600"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+								</svg>
+							</div>
+							<h2 class="text-2xl font-bold text-gray-900 mb-4">
+								Welcome to Playwright Studio
+							</h2>
+							<p class="text-gray-600 text-lg max-w-lg mx-auto leading-relaxed">
+								Your intelligent testing companion is ready. Start by navigating
+								to a website or use the quick actions below.
+							</p>
+							<div class="mt-8 flex flex-wrap justify-center gap-3">
+								<div
+									class="quick-action"
+									onclick="sendQuickCommand('go to google.com')">
+									<span class="text-lg">🌐</span>
+									Navigate to Google
+								</div>
+								<div
+									class="quick-action"
+									onclick="sendQuickCommand('take screenshot')">
+									<span class="text-lg">📸</span>
+									Take Screenshot
+								</div>
+								<div class="quick-action" onclick="generateTestCases()">
+									<span class="text-lg">✨</span>
+									Generate Tests
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Enhanced Input Section -->
+					<div class="glass-effect border-t border-gray-200/50 p-8">
+						<div class="max-w-4xl mx-auto space-y-6">
+							<!-- Main Input -->
+							<div class="flex gap-4">
+								<div class="flex-1 relative">
+									<input
+										type="text"
+										id="messageInput"
+										placeholder="Describe what you want to test or automate..."
+										class="enterprise-input w-full pr-14" />
+									<div
+										class="absolute right-4 top-1/2 transform -translate-y-1/2">
+										<svg
+											class="w-5 h-5 text-gray-400"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+										</svg>
+									</div>
+								</div>
+								<button onclick="sendMessage()" class="enterprise-button">
+									<span>Execute</span>
+								</button>
+							</div>
+
+							<!-- Enhanced Quick Actions -->
+							<div class="flex flex-wrap gap-3 justify-center">
+								<button
+									onclick="sendQuickCommand('go to google.com')"
+									class="quick-action">
+									<span class="text-base">🌐</span>
+									<span>Google</span>
+								</button>
+								<button
+									onclick="sendQuickCommand('go to github.com')"
+									class="quick-action">
+									<span class="text-base">💻</span>
+									<span>GitHub</span>
+								</button>
+								<button
+									onclick="sendQuickCommand('take screenshot')"
+									class="quick-action">
+									<span class="text-base">📸</span>
+									<span>Screenshot</span>
+								</button>
+								<button
+									onclick="sendQuickCommand('scroll down')"
+									class="quick-action">
+									<span class="text-base">⬇️</span>
+									<span>Scroll</span>
+								</button>
+								<button
+									onclick="sendQuickCommand('go back')"
+									class="quick-action">
+									<span class="text-base">↩️</span>
+									<span>Go Back</span>
+								</button>
+								<button
+									onclick="generateTestCases()"
+									class="quick-action"
+									style="
+										background: linear-gradient(
+											135deg,
+											#10b981 0%,
+											#059669 100%
+										);
+										color: white;
+										border-color: #047857;
+									">
+									<span class="text-base">✨</span>
+									<span>Generate Test Cases</span>
+								</button>
+							</div>
+						</div>
+					</div>
+				</main>
+
+				<!-- Enhanced Elements Sidebar -->
+				<aside
+					id="sidebar"
+					class="w-96 glass-effect border-l border-gray-200/50 flex flex-col desktop-only">
+					<div class="p-6 border-b border-gray-200/30">
+						<div class="flex items-center justify-between mb-4">
+							<div>
+								<h3 class="font-bold text-gray-900 text-xl">Page Elements</h3>
+								<p class="text-sm text-gray-600 mt-1">
+									Interactive elements on the current page
+								</p>
+							</div>
+							<div
+								class="w-10 h-10 bg-gradient-to-br from-purple-100 to-pink-100 rounded-xl flex items-center justify-center">
+								<svg
+									class="w-5 h-5 text-purple-600"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+								</svg>
+							</div>
+						</div>
+					</div>
+
+					<div
+						id="elementsPanel"
+						class="flex-1 p-6 space-y-4 overflow-y-auto scrollbar-thin">
+						<div class="text-center py-16">
+							<div
+								class="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+								<svg
+									class="w-8 h-8 text-gray-400"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+								</svg>
+							</div>
+							<p class="text-gray-500 font-medium">
+								Navigate to a page to discover elements
+							</p>
+						</div>
+					</div>
+				</aside>
+			</div>
+		</div>
+
+		<!-- Enhanced Test Code Modal -->
+		<div
+			id="testCodeModal"
+			class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+			<div
+				class="bg-white rounded-3xl w-full max-w-7xl max-h-[90vh] overflow-hidden shadow-2xl animate-scale-in">
+				<div
+					class="px-8 py-6 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
+					<div class="flex items-center space-x-4">
+						<div
+							class="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
+							<svg
+								class="w-6 h-6 text-white"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+							</svg>
+						</div>
+						<div>
+							<h3 class="text-2xl font-bold text-gray-900">
+								Generated Test Suite
+							</h3>
+							<p class="text-sm text-gray-600">
+								Production-ready Playwright test code
+							</p>
+						</div>
+					</div>
+					<div class="flex items-center space-x-3">
+						<button
+							onclick="copyTestCode()"
+							class="enterprise-button"
+							style="padding: 12px 24px; font-size: 14px">
+							<svg
+								class="w-4 h-4 mr-2"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+							</svg>
+							Copy Code
+						</button>
+						<button
+							onclick="downloadTest()"
+							class="enterprise-button"
+							style="
+								background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+								padding: 12px 24px;
+								font-size: 14px;
+							">
+							<svg
+								class="w-4 h-4 mr-2"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+							</svg>
+							Download
+						</button>
+						<button
+							onclick="closeTestModal()"
+							class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-xl font-medium transition-all duration-200">
+							Close
+						</button>
+					</div>
+				</div>
+				<div class="overflow-y-auto max-h-[calc(90vh-120px)]">
+					<div id="testCodeContent" class="code-block m-0 rounded-none"></div>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			let ws = null;
+			let currentTestCode = "";
+			let currentFileName = "";
+
+			function initWebSocket() {
+				const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+				ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+				ws.onopen = () => {
+					updateConnectionStatus("Connected", true);
+				};
+
+				ws.onmessage = (event) => {
+					const data = JSON.parse(event.data);
+					handleMessage(data);
+				};
+
+				ws.onclose = () => {
+					updateConnectionStatus("Reconnecting", false);
+					setTimeout(initWebSocket, 2000);
+				};
+
+				ws.onerror = () => {
+					updateConnectionStatus("Connection Error", false);
+				};
+			}
+
+			function handleMessage(data) {
+				switch (data.type) {
+					case "session_started":
+						addMessage("system", data.message);
+						break;
+					case "message_received":
+						addMessage("system", data.message);
+						break;
+					case "navigation_complete":
+						addMessage("success", `✅ ${data.message}`);
+						updateElements(data.elements || []);
+						break;
+					case "action_complete":
+						addMessage("success", `✅ ${data.message}`);
+						if (data.playwrightCode) {
+							addCodeSnippet(data.playwrightCode);
+						}
+						if (data.newElements) {
+							updateElements(data.newElements);
+						}
+						break;
+					case "screenshot_taken":
+						addScreenshot(data.screenshot);
+						break;
+					case "test_generated":
+						currentTestCode = data.testCode;
+						currentFileName = data.fileName;
+						addMessage("success", `✅ ${data.message}`);
+						showTestCode(data.testCode);
+						break;
+					case "ai_thinking":
+					case "ai_processing":
+						addMessage("ai", `🤖 ${data.message}`);
+						break;
+					case "ai_decision":
+						addMessage(
+							"ai",
+							`🎯 AI Decision: ${
+								data.action
+									? data.action.action
+									: data.decision?.description || "Processing..."
+							}`,
+						);
+						break;
+					case "error":
+						addMessage("error", `❌ ${data.message}`);
+						break;
+					case "status":
+					case "progress":
+					case "action_start":
+						addMessage("info", `ℹ️ ${data.message}`);
+						break;
+					default:
+						console.log("Unhandled message type:", data.type, data);
+				}
+			}
+
+			function sendMessage() {
+				const input = document.getElementById("messageInput");
+				const message = input.value.trim();
+
+				if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
+					showNotification("❌ Connection not ready. Please wait...", "error");
+					return;
+				}
+
+				addMessage("user", message);
+
+				try {
+					ws.send(
+						JSON.stringify({
+							type: "chat_message",
+							message: message,
+						}),
+					);
+					input.value = "";
+				} catch (error) {
+					console.error("Send error:", error);
+					showNotification("❌ Failed to send message", "error");
+				}
+			}
+
+			function sendQuickCommand(command) {
+				if (!ws || ws.readyState !== WebSocket.OPEN) {
+					showNotification("❌ Connection not ready. Please wait...", "error");
+					return;
+				}
+
+				document.getElementById("messageInput").value = command;
+				sendMessage();
+			}
+
+			function generateTestCases() {
+				if (!ws || ws.readyState !== WebSocket.OPEN) {
+					showNotification("❌ Connection not ready. Please wait...", "error");
+					return;
+				}
+
+				addMessage("user", "generate test cases");
+				addMessage("info", "🔄 Generating comprehensive test cases...");
+
+				try {
+					ws.send(
+						JSON.stringify({
+							type: "chat_message",
+							message: "generate test cases",
+						}),
+					);
+				} catch (error) {
+					console.error("Generate test error:", error);
+					showNotification("❌ Failed to generate test cases", "error");
+				}
+			}
+
+			function addMessage(type, content) {
+				const container = document.getElementById("chatMessages");
+				const messageDiv = document.createElement("div");
+				messageDiv.className = "animate-slide-in";
+
+				const timestamp = new Date().toLocaleTimeString([], {
+					hour: "2-digit",
+					minute: "2-digit",
+				});
+
+				const configs = {
+					user: {
+						align: "justify-end",
+						bubbleClass: "message-bubble message-user",
+						maxWidth: "max-w-2xl",
+						margin: "ml-16",
+					},
+					system: {
+						align: "justify-start",
+						bubbleClass: "message-bubble message-system",
+						maxWidth: "max-w-2xl",
+						margin: "mr-16",
+					},
+					success: {
+						align: "justify-start",
+						bubbleClass: "message-bubble message-success",
+						maxWidth: "max-w-2xl",
+						margin: "mr-16",
+					},
+					error: {
+						align: "justify-start",
+						bubbleClass: "message-bubble message-error",
+						maxWidth: "max-w-2xl",
+						margin: "mr-16",
+					},
+					ai: {
+						align: "justify-start",
+						bubbleClass: "message-bubble message-ai",
+						maxWidth: "max-w-2xl",
+						margin: "mr-16",
+					},
+					info: {
+						align: "justify-start",
+						bubbleClass: "message-bubble message-info",
+						maxWidth: "max-w-2xl",
+						margin: "mr-16",
+					},
+				};
+
+				const config = configs[type];
+
+				messageDiv.innerHTML = `
+					<div class="flex ${config.align}">
+						<div class="${config.maxWidth} ${config.margin}">
+							<div class="${config.bubbleClass}">
+								<p class="leading-relaxed">${content}</p>
+								<p class="text-xs mt-3 opacity-70 font-semibold">${timestamp}</p>
+							</div>
+						</div>
+					</div>
+				`;
+
+				container.appendChild(messageDiv);
+				container.scrollTop = container.scrollHeight;
+			}
+
+			function addCodeSnippet(code) {
+				const container = document.getElementById("chatMessages");
+				const codeDiv = document.createElement("div");
+				codeDiv.className = "animate-slide-in mr-16";
+
+				codeDiv.innerHTML = `
+					<div class="max-w-4xl">
+						<div class="enterprise-card bg-gradient-to-br from-slate-900 to-slate-800 text-white">
+							<div class="flex items-center justify-between mb-6">
+								<div class="flex items-center space-x-3">
+									<div class="flex space-x-2">
+										<div class="w-3 h-3 bg-red-500 rounded-full"></div>
+										<div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+										<div class="w-3 h-3 bg-green-500 rounded-full"></div>
+									</div>
+									<span class="text-gray-300 font-semibold">Playwright Code</span>
+								</div>
+								<button onclick="copyCode('${code.replace(
+									/'/g,
+									"\\'",
+								)}');" class="bg-slate-700 hover:bg-slate-600 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+									Copy Code
+								</button>
+							</div>
+							<code class="text-green-400 font-mono text-sm leading-relaxed block">${code}</code>
+						</div>
+					</div>
+				`;
+
+				container.appendChild(codeDiv);
+				container.scrollTop = container.scrollHeight;
+			}
+
+			function addScreenshot(base64Image) {
+				const container = document.getElementById("chatMessages");
+				const imgDiv = document.createElement("div");
+				imgDiv.className = "animate-slide-in mr-16";
+
+				imgDiv.innerHTML = `
+					<div class="max-w-lg">
+						<div class="enterprise-card">
+							<div class="flex items-center space-x-3 mb-4">
+								<div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+									<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+									</svg>
+								</div>
+								<div>
+									<p class="font-semibold text-gray-900">Screenshot Captured</p>
+									<p class="text-sm text-gray-600">Current page state</p>
+								</div>
+							</div>
+							<img src="data:image/png;base64,${base64Image}" alt="Screenshot" class="w-full rounded-xl border border-gray-200 shadow-sm">
+						</div>
+					</div>
+				`;
+
+				container.appendChild(imgDiv);
+				container.scrollTop = container.scrollHeight;
+			}
+
+			function updateElements(elements) {
+				const panel = document.getElementById("elementsPanel");
+
+				if (!elements || elements.length === 0) {
+					panel.innerHTML = `
+						<div class="text-center py-16">
+							<div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+								<svg class="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.382 4c-.77-1.333-2.694-1.333-3.464 0L3.26 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+								</svg>
+							</div>
+							<p class="text-gray-500 font-medium">No interactive elements found</p>
+						</div>
+					`;
+					return;
+				}
+
+				panel.innerHTML = elements
+					.map(
+						(el, index) => `
+					<div class="enterprise-card cursor-pointer animate-slide-up" onclick="copySelector('${
+						el.selector
+					}')" style="animation-delay: ${index * 50}ms">
+						<div class="flex items-start justify-between">
+							<div class="flex-1 min-w-0">
+								<div class="flex items-center space-x-2 mb-3">
+									<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 border border-blue-200">
+										${el.tag.toUpperCase()}${el.type ? `[${el.type}]` : ""}
+									</span>
+								</div>
+								<p class="font-semibold text-gray-900 mb-2 truncate" title="${
+									el.text || "No text"
+								}">${el.text || "No text"}</p>
+								<p class="text-xs text-gray-500 font-mono bg-gray-50 rounded-lg px-3 py-2 truncate" title="${
+									el.selector
+								}">${el.selector}</p>
+							</div>
+							<div class="ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+								<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+								</svg>
+							</div>
+						</div>
+					</div>
+				`,
+					)
+					.join("");
+			}
+
+			function copySelector(selector) {
+				navigator.clipboard.writeText(selector).then(() => {
+					showNotification(
+						`✅ Selector copied: ${selector.substring(0, 40)}${
+							selector.length > 40 ? "..." : ""
+						}`,
+						"success",
+					);
+				});
+			}
+
+			function copyCode(code) {
+				navigator.clipboard.writeText(code).then(() => {
+					showNotification("✅ Code copied to clipboard!", "success");
+				});
+			}
+
+			function showTestCode(code) {
+				document.getElementById("testCodeContent").textContent = code;
+				document.getElementById("testCodeModal").classList.remove("hidden");
+			}
+
+			function closeTestModal() {
+				document.getElementById("testCodeModal").classList.add("hidden");
+			}
+
+			function copyTestCode() {
+				if (!currentTestCode) {
+					showNotification("❌ No test code available", "error");
+					return;
+				}
+
+				navigator.clipboard
+					.writeText(currentTestCode)
+					.then(() => {
+						showNotification("✅ Test code copied to clipboard!", "success");
+					})
+					.catch(() => {
+						showNotification("❌ Failed to copy test code", "error");
+					});
+			}
+
+			function downloadTest() {
+				if (!currentTestCode) {
+					showNotification("❌ No test code available", "error");
+					return;
+				}
+
+				try {
+					const blob = new Blob([currentTestCode], { type: "text/javascript" });
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement("a");
+					a.href = url;
+					a.download = currentFileName || `test-${Date.now()}.spec.js`;
+					document.body.appendChild(a);
+					a.click();
+					URL.revokeObjectURL(url);
+					document.body.removeChild(a);
+					showNotification("📥 Test file downloaded successfully!", "success");
+				} catch (error) {
+					console.error("Download error:", error);
+					showNotification("❌ Failed to download test file", "error");
+				}
+			}
+
+			function updateConnectionStatus(status, isConnected) {
+				const statusEl = document.getElementById("connectionStatus");
+				if (statusEl) {
+					statusEl.textContent = status;
+
+					const indicator = statusEl.parentElement;
+					if (isConnected) {
+						indicator.className = "status-indicator";
+						indicator.querySelector(".status-dot").style.background = "#10b981";
+					} else {
+						indicator.className = "status-indicator";
+						indicator.style.background = "rgba(239, 68, 68, 0.1)";
+						indicator.style.borderColor = "rgba(239, 68, 68, 0.2)";
+						indicator.style.color = "#dc2626";
+						indicator.querySelector(".status-dot").style.background = "#ef4444";
+					}
+				}
+			}
+
+			function showNotification(message, type = "info") {
+				const colors = {
+					success: "from-emerald-500 to-green-600",
+					error: "from-red-500 to-rose-600",
+					info: "from-blue-500 to-indigo-600",
+					warning: "from-amber-500 to-orange-600",
+				};
+
+				const icons = {
+					success: "✅",
+					error: "❌",
+					warning: "⚠️",
+					info: "ℹ️",
+				};
+
+				const notification = document.createElement("div");
+				notification.className = `fixed top-6 right-6 bg-gradient-to-r ${colors[type]} text-white px-6 py-4 rounded-2xl shadow-2xl z-50 transform transition-all duration-300 translate-x-full opacity-0 max-w-sm`;
+
+				notification.innerHTML = `
+					<div class="flex items-center space-x-3">
+						<div class="flex-shrink-0 text-lg">
+							${icons[type]}
+						</div>
+						<p class="font-medium flex-1 leading-relaxed">${message}</p>
+						<button onclick="this.parentElement.parentElement.remove()" class="flex-shrink-0 opacity-70 hover:opacity-100 p-1 rounded-lg hover:bg-white/20 transition-all">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+							</svg>
+						</button>
+					</div>
+				`;
+
+				document.body.appendChild(notification);
+
+				requestAnimationFrame(() => {
+					notification.classList.remove("translate-x-full", "opacity-0");
+					notification.classList.add("translate-x-0", "opacity-100");
+				});
+
+				setTimeout(() => {
+					notification.classList.add("translate-x-full", "opacity-0");
+					setTimeout(() => {
+						if (notification.parentElement) {
+							notification.remove();
+						}
+					}, 300);
+				}, 5000);
+			}
+
+			// Enhanced input handling
+			document
+				.getElementById("messageInput")
+				.addEventListener("keypress", (e) => {
+					if (e.key === "Enter") {
+						e.preventDefault();
+						sendMessage();
+					}
+				});
+
+			// Initialize
+			document.addEventListener("DOMContentLoaded", () => {
+				initWebSocket();
+			});
+
+			initWebSocket();
+		</script>
+	</body>
+</html>
