@@ -1,0 +1,690 @@
+const { firefox } = require("playwright");
+const OpenAI = require("openai");
+const { MCPError, ErrorCodes } = require("./protocol");
+
+class PlaywrightMCPHandler {
+	constructor(apiKey) {
+		this.openai = new OpenAI({ apiKey });
+		this.browser = null;
+		this.page = null;
+		this.context = null;
+		this.elementCache = new Map();
+	}
+
+	async handleTool(toolName, params, onProgress) {
+		try {
+			onProgress?.({ type: "tool_start", tool: toolName, params });
+
+			switch (toolName) {
+				case "browser_initialize":
+					return await this.initializeBrowser(params, onProgress);
+				case "page_navigate":
+					return await this.navigatePage(params, onProgress);
+				case "page_screenshot":
+					return await this.takeScreenshot(params, onProgress);
+				case "page_get_snapshot":
+					return await this.getPageSnapshot(params, onProgress);
+				case "element_click":
+					return await this.clickElement(params, onProgress);
+				case "element_type":
+					return await this.typeText(params, onProgress);
+				case "keyboard_press":
+					return await this.pressKey(params, onProgress);
+				case "page_scroll":
+					return await this.scrollPage(params, onProgress);
+				case "element_wait":
+					return await this.waitForElement(params, onProgress);
+				case "ai_decide_action":
+					return await this.aiDecideAction(params, onProgress);
+				default:
+					throw new MCPError(
+						ErrorCodes.METHOD_NOT_FOUND,
+						`Tool ${toolName} not found`,
+					);
+			}
+		} catch (error) {
+			if (error instanceof MCPError) {
+				throw error;
+			}
+			throw new MCPError(
+				ErrorCodes.TOOL_EXECUTION_ERROR,
+				`Tool execution failed: ${error.message}`,
+				{ tool: toolName, originalError: error.message },
+			);
+		}
+	}
+
+	async initializeBrowser(params, onProgress) {
+		const {
+			browser = "firefox",
+			headless = false,
+			viewport = { width: 1280, height: 720 },
+		} = params;
+
+		onProgress?.({ type: "status", message: "Launching browser..." });
+
+		this.browser = await firefox.launch({
+			headless,
+			slowMo: 100,
+			args: [
+				"--no-sandbox",
+				"--disable-setuid-sandbox",
+				"--disable-web-security",
+			],
+		});
+
+		this.context = await this.browser.newContext({
+			userAgent:
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+			viewport,
+			ignoreHTTPSErrors: true,
+			permissions: ["geolocation", "notifications"],
+		});
+
+		this.page = await this.context.newPage();
+		await this.page.setDefaultTimeout(30000);
+		await this.page.setDefaultNavigationTimeout(45000);
+
+		// Set up event listeners
+		this.page.on("pageerror", (error) => {
+			onProgress?.({ type: "page_error", error: error.message });
+		});
+
+		this.page.on("framenavigated", () => {
+			this.elementCache.clear();
+		});
+
+		onProgress?.({ type: "status", message: "Browser ready" });
+
+		return {
+			success: true,
+			browserType: browser,
+			viewport,
+			message: "Browser initialized successfully",
+		};
+	}
+
+	async navigatePage(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { url, waitUntil = "domcontentloaded" } = params;
+
+		let finalUrl = url;
+		if (!url.startsWith("http")) {
+			finalUrl = `https://${url}`;
+		}
+
+		onProgress?.({ type: "status", message: `Navigating to ${finalUrl}...` });
+
+		await this.page.goto(finalUrl, {
+			waitUntil,
+			timeout: 45000,
+		});
+
+		await this.waitForStability();
+
+		return {
+			success: true,
+			url: this.page.url(),
+			title: await this.page.title(),
+			message: `Successfully navigated to ${finalUrl}`,
+		};
+	}
+
+	async takeScreenshot(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { fullPage = false, type = "png" } = params;
+
+		onProgress?.({ type: "status", message: "Taking screenshot..." });
+
+		const screenshot = await this.page.screenshot({ fullPage, type });
+
+		return {
+			success: true,
+			screenshot: screenshot.toString("base64"),
+			type,
+			fullPage,
+			message: "Screenshot captured successfully",
+		};
+	}
+
+	async getPageSnapshot(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { includeHidden = false, maxElements = 75 } = params;
+
+		onProgress?.({ type: "status", message: "Analyzing page..." });
+
+		await this.waitForStability();
+
+		const pageSnapshot = await this.page.evaluate(
+			({ includeHidden, maxElements }) => {
+				const snapshot = {
+					url: window.location.href,
+					title: document.title,
+					domain: window.location.hostname,
+					readyState: document.readyState,
+					elements: [],
+				};
+
+				// Helper function to generate CSS selector
+				function generateSelector(element) {
+					if (element.id) {
+						return `#${element.id}`;
+					}
+
+					if (element.className && typeof element.className === "string") {
+						const classes = element.className
+							.split(" ")
+							.filter((c) => c.trim());
+						if (classes.length > 0) {
+							return `${element.tagName.toLowerCase()}.${classes.join(".")}`;
+						}
+					}
+
+					// Try to build path-based selector
+					let path = [];
+					let current = element;
+
+					while (current && current.nodeType === Node.ELEMENT_NODE) {
+						let selector = current.tagName.toLowerCase();
+
+						if (current.id) {
+							selector += `#${current.id}`;
+							path.unshift(selector);
+							break;
+						}
+
+						if (current.className && typeof current.className === "string") {
+							const classes = current.className
+								.split(" ")
+								.filter((c) => c.trim());
+							if (classes.length > 0) {
+								selector += `.${classes.slice(0, 2).join(".")}`;
+							}
+						}
+
+						// Add nth-child for specificity
+						const siblings = Array.from(current.parentNode?.children || []);
+						const index = siblings.indexOf(current);
+						if (index > 0) {
+							selector += `:nth-child(${index + 1})`;
+						}
+
+						path.unshift(selector);
+						current = current.parentElement;
+
+						if (path.length > 4) break; // Limit depth
+					}
+
+					return path.join(" > ") || element.tagName.toLowerCase();
+				}
+
+				// Helper function to check if element is interactive
+				function isInteractive(element) {
+					const interactiveTags = [
+						"a",
+						"button",
+						"input",
+						"select",
+						"textarea",
+						"label",
+					];
+					const interactiveTypes = [
+						"button",
+						"submit",
+						"reset",
+						"checkbox",
+						"radio",
+						"file",
+					];
+					const interactiveRoles = [
+						"button",
+						"link",
+						"tab",
+						"menuitem",
+						"option",
+					];
+
+					return (
+						interactiveTags.includes(element.tagName.toLowerCase()) ||
+						interactiveTypes.includes(element.type) ||
+						interactiveRoles.includes(element.getAttribute("role")) ||
+						element.hasAttribute("onclick") ||
+						element.hasAttribute("onmousedown") ||
+						element.hasAttribute("data-testid") ||
+						element.hasAttribute("aria-label") ||
+						element.contentEditable === "true" ||
+						element.hasAttribute("tabindex")
+					);
+				}
+
+				// Helper function to get element text
+				function getElementText(element) {
+					// Try different text sources
+					const textSources = [
+						element.innerText?.trim(),
+						element.textContent?.trim(),
+						element.getAttribute("aria-label"),
+						element.getAttribute("title"),
+						element.getAttribute("alt"),
+						element.getAttribute("placeholder"),
+						element.value,
+						element.getAttribute("data-testid"),
+					];
+
+					const text = textSources.find((text) => text && text.length > 0);
+					return text && text.length > 150
+						? text.substring(0, 150) + "..."
+						: text || "";
+				}
+
+				// Helper function to check if element is visible
+				function isElementVisible(element) {
+					if (!includeHidden) {
+						const style = window.getComputedStyle(element);
+						const rect = element.getBoundingClientRect();
+
+						return (
+							style.display !== "none" &&
+							style.visibility !== "hidden" &&
+							style.opacity !== "0" &&
+							rect.width > 0 &&
+							rect.height > 0 &&
+							rect.top < window.innerHeight &&
+							rect.bottom > 0 &&
+							rect.left < window.innerWidth &&
+							rect.right > 0
+						);
+					}
+					return true;
+				}
+
+				// Collect all elements
+				const allElements = document.querySelectorAll("*");
+				const processedElements = [];
+
+				for (const element of allElements) {
+					if (processedElements.length >= maxElements) break;
+
+					try {
+						if (!isElementVisible(element)) continue;
+
+						const isInteractiveElement = isInteractive(element);
+						const text = getElementText(element);
+
+						// Only include elements that are interactive or have meaningful text
+						if (isInteractiveElement || (text && text.length > 2)) {
+							const elementInfo = {
+								tag: element.tagName.toLowerCase(),
+								type: element.type || null,
+								text: text || "",
+								selector: generateSelector(element),
+								id: element.id || null,
+								className: element.className || null,
+								role: element.getAttribute("role") || null,
+								ariaLabel: element.getAttribute("aria-label") || null,
+								href: element.href || null,
+								src: element.src || null,
+								interactive: isInteractiveElement,
+								visible: true,
+								rect: {
+									x: Math.round(element.getBoundingClientRect().x),
+									y: Math.round(element.getBoundingClientRect().y),
+									width: Math.round(element.getBoundingClientRect().width),
+									height: Math.round(element.getBoundingClientRect().height),
+								},
+							};
+
+							processedElements.push(elementInfo);
+						}
+					} catch (error) {
+						// Skip elements that cause errors
+						continue;
+					}
+				}
+
+				// Sort by importance (interactive elements first, then by size)
+				processedElements.sort((a, b) => {
+					if (a.interactive !== b.interactive) {
+						return b.interactive - a.interactive;
+					}
+					const aSize = a.rect.width * a.rect.height;
+					const bSize = b.rect.width * b.rect.height;
+					return bSize - aSize;
+				});
+
+				snapshot.elements = processedElements.slice(0, maxElements);
+
+				return snapshot;
+			},
+			{ includeHidden, maxElements },
+		);
+
+		return {
+			success: true,
+			snapshot: pageSnapshot,
+			message: `Page snapshot captured with ${pageSnapshot.elements.length} elements`,
+		};
+	}
+
+	async clickElement(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const {
+			selector,
+			fallbackSelectors = [],
+			force = false,
+			timeout = 30000,
+		} = params;
+
+		const selectors = [selector, ...fallbackSelectors].filter(Boolean);
+
+		onProgress?.({ type: "status", message: `Clicking element: ${selector}` });
+
+		for (const sel of selectors) {
+			try {
+				const element = await this.page.waitForSelector(sel, {
+					state: "attached",
+					timeout: timeout / selectors.length,
+				});
+
+				await element.scrollIntoViewIfNeeded();
+				await this.page.waitForTimeout(500);
+
+				const isVisible = await element.isVisible();
+				const isEnabled = await element.isEnabled();
+
+				if (!isVisible || !isEnabled) {
+					if (!force) continue;
+				}
+
+				await element.click({ force, timeout: 5000 });
+
+				return {
+					success: true,
+					selector: sel,
+					message: `Successfully clicked element: ${sel}`,
+				};
+			} catch (error) {
+				if (sel === selectors[selectors.length - 1]) {
+					throw error;
+				}
+				continue;
+			}
+		}
+
+		throw new MCPError(
+			ErrorCodes.TOOL_EXECUTION_ERROR,
+			"No valid selector found for clicking",
+		);
+	}
+
+	async typeText(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { selector, text, clear = true, delay = 50 } = params;
+
+		onProgress?.({ type: "status", message: `Typing text into: ${selector}` });
+
+		const element = await this.page.waitForSelector(selector, {
+			state: "attached",
+			timeout: 10000,
+		});
+		await element.scrollIntoViewIfNeeded();
+
+		if (clear) {
+			await element.click();
+			await this.page.keyboard.press("Control+A");
+			await this.page.keyboard.press("Delete");
+		}
+
+		await element.type(text, { delay });
+
+		return {
+			success: true,
+			selector,
+			text,
+			message: `Successfully typed text into ${selector}`,
+		};
+	}
+
+	async pressKey(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { key, modifiers = [] } = params;
+
+		onProgress?.({ type: "status", message: `Pressing key: ${key}` });
+
+		const keyCombo =
+			modifiers.length > 0 ? `${modifiers.join("+")}+${key}` : key;
+		await this.page.keyboard.press(keyCombo);
+
+		return {
+			success: true,
+			key: keyCombo,
+			message: `Successfully pressed key: ${keyCombo}`,
+		};
+	}
+
+	async scrollPage(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { direction = "down", amount = 300 } = params;
+
+		onProgress?.({ type: "status", message: `Scrolling ${direction}...` });
+
+		const scrollMap = {
+			down: [0, amount],
+			up: [0, -amount],
+			right: [amount, 0],
+			left: [-amount, 0],
+		};
+
+		const [x, y] = scrollMap[direction];
+
+		await this.page.evaluate(
+			(x, y) => {
+				window.scrollBy({ left: x, top: y, behavior: "smooth" });
+			},
+			x,
+			y,
+		);
+
+		await this.page.waitForTimeout(1000);
+
+		return {
+			success: true,
+			direction,
+			amount,
+			message: `Scrolled ${direction} by ${amount}px`,
+		};
+	}
+
+	async waitForElement(params, onProgress) {
+		if (!this.page) {
+			throw new MCPError(ErrorCodes.BROWSER_ERROR, "Browser not initialized");
+		}
+
+		const { selector, state = "visible", timeout = 30000 } = params;
+
+		onProgress?.({
+			type: "status",
+			message: `Waiting for element: ${selector}`,
+		});
+
+		const element = await this.page.waitForSelector(selector, {
+			state,
+			timeout,
+		});
+
+		return {
+			success: true,
+			selector,
+			state,
+			message: `Element found: ${selector}`,
+		};
+	}
+
+	async aiDecideAction(params, onProgress) {
+		const { goal, pageSnapshot, executionHistory = [] } = params;
+
+		onProgress?.({ type: "ai_thinking", message: "AI analyzing page..." });
+
+		const systemPrompt = `You are an expert web automation AI using MCP tools. Your goal is to execute UI actions with 100% reliability.
+
+GOAL: ${goal}
+
+AVAILABLE MCP TOOLS:
+- element_click: Click on elements
+- element_type: Type text into inputs
+- keyboard_press: Press keyboard keys
+- page_scroll: Scroll the page
+- element_wait: Wait for elements
+- page_navigate: Navigate to URLs
+
+CRITICAL RELIABILITY RULES:
+1. ALWAYS use the most specific selector available
+2. NEVER use generic selectors
+3. ALWAYS verify element exists before interaction
+4. Use fallback selectors when possible
+5. Add explicit waits after actions that change the page
+
+PAGE: ${pageSnapshot.url}
+TITLE: ${pageSnapshot.title}
+
+ELEMENTS:
+${pageSnapshot.elements
+	.map(
+		(el, i) =>
+			`${i}: ${el.tag}${el.type ? `[${el.type}]` : ""} "${el.text}" ${
+				el.selector || ""
+			}`,
+	)
+	.join("\n")}
+
+HISTORY:
+${executionHistory
+	.slice(-5)
+	.map(
+		(h, i) =>
+			`${i + 1}. ${h.action}: ${h.description} - ${
+				h.success ? "SUCCESS" : "FAILED"
+			}`,
+	)
+	.join("\n")}
+
+Respond with JSON only:
+{
+    "tool": "tool_name",
+    "params": {...},
+    "reasoning": "why this action",
+    "description": "what you're doing",
+    "confidence": "high|medium|low"
+}`;
+
+		try {
+			const completion = await this.openai.chat.completions.create({
+				model: "gpt-4o-mini",
+				temperature: 0.1,
+				max_tokens: 2000,
+				messages: [
+					{ role: "system", content: systemPrompt },
+					{
+						role: "user",
+						content: `Decide the next reliable action for: "${goal}"`,
+					},
+				],
+				response_format: { type: "json_object" },
+			});
+
+			const decision = JSON.parse(completion.choices[0].message.content);
+
+			onProgress?.({ type: "ai_decision", decision });
+
+			return {
+				success: true,
+				decision,
+				message: "AI decision completed",
+			};
+		} catch (error) {
+			throw new MCPError(
+				ErrorCodes.AI_ERROR,
+				`AI decision failed: ${error.message}`,
+			);
+		}
+	}
+
+	async waitForStability() {
+		if (!this.page) return;
+
+		try {
+			await Promise.race([
+				this.page.waitForLoadState("domcontentloaded"),
+				this.page.waitForTimeout(3000),
+			]);
+
+			await this.page.evaluate(() => {
+				return new Promise((resolve) => {
+					if (document.readyState === "complete") {
+						resolve();
+						return;
+					}
+
+					let mutationCount = 0;
+					let timeoutId;
+
+					const observer = new MutationObserver(() => {
+						mutationCount++;
+						clearTimeout(timeoutId);
+						timeoutId = setTimeout(() => {
+							if (mutationCount < 5) {
+								observer.disconnect();
+								resolve();
+							}
+							mutationCount = 0;
+						}, 1000);
+					});
+
+					observer.observe(document.body, {
+						childList: true,
+						subtree: true,
+						attributes: true,
+					});
+
+					setTimeout(() => {
+						observer.disconnect();
+						resolve();
+					}, 5000);
+				});
+			});
+
+			await this.page.waitForTimeout(500);
+		} catch (error) {
+			console.warn("Stability check warning:", error.message);
+		}
+	}
+
+	async cleanup() {
+		if (this.browser) {
+			await this.browser.close();
+		}
+	}
+}
+
+module.exports = { PlaywrightMCPHandler };
