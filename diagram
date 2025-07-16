@@ -1,0 +1,1457 @@
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useContext,
+  createContext,
+} from "react";
+import ReactFlow, {
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  Controls,
+  Background,
+  MiniMap,
+  Handle,
+  Position,
+  MarkerType,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import {
+  Square,
+  Circle,
+  Diamond,
+  Trash2,
+  Download,
+  Upload,
+  Box,
+  Minus,
+  Plus,
+  User,
+  ChevronRight,
+  ChevronLeft,
+  ServerCog,
+  GitMerge,
+  Shield,
+  Database,
+  Rabbit,
+  Type,
+  FileInput,
+  RotateCcw,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+  Server,
+  HardDrive,
+  Cpu,
+  Zap,
+  Users,
+  ArrowRight,
+  Globe,
+  Cloud,
+  Database as DynamoDBIcon,
+  Network as VPCIcon,
+  Box as ContainerIcon,
+  Server as AppServiceIcon,
+  Moon,
+  Sun,
+} from "lucide-react";
+import domtoimage from "dom-to-image";
+
+const NodeUpdaterContext = createContext(null);
+const SelectedNodeContext = createContext(null);
+const ThemeContext = createContext({ theme: "light", toggleTheme: () => {} });
+
+const EditableLabel = ({
+  initialValue,
+  nodeId,
+  dataKey,
+  className = "",
+  style = {},
+}) => {
+  const setNodes = useContext(NodeUpdaterContext);
+  const [isEditing, setIsEditing] = useState(false);
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  const onBlur = () => {
+    if (!setNodes) return;
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, [dataKey]: value } } : n
+      )
+    );
+    setIsEditing(false);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Enter") onBlur();
+  };
+
+  return isEditing ? (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      className={`nodrag bg-transparent text-center font-medium dark:text-gray-200 text-gray-800 outline-none border-b-2 border-blue-500 w-full ${className}`}
+      style={style}
+      autoFocus
+      onClick={(e) => e.stopPropagation()}
+    />
+  ) : (
+    <div
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        setIsEditing(true);
+      }}
+      className={`cursor-pointer text-center font-medium dark:text-gray-200 text-gray-800 ${className}`}
+      style={style}
+    >
+      {value || "..."}
+    </div>
+  );
+};
+
+const ResizableNodeWrapper = ({
+  children,
+  id,
+  minWidth = 80,
+  minHeight = 40,
+}) => {
+  const setNodes = useContext(NodeUpdaterContext);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const onResizeStart = useCallback((e) => {
+    e.stopPropagation();
+    setIsResizing(true);
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!isResizing || !setNodes) return;
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === id) {
+            const newWidth = Math.max(minWidth, n.style.width + e.movementX);
+            const newHeight = Math.max(minHeight, n.style.height + e.movementY);
+            return {
+              ...n,
+              style: { ...n.style, width: newWidth, height: newHeight },
+            };
+          }
+          return n;
+        })
+      );
+    };
+    const onMouseUp = () => setIsResizing(false);
+    if (isResizing) {
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isResizing, id, setNodes, minWidth, minHeight]);
+
+  return (
+    <div className="relative w-full h-full">
+      {children}
+      <div
+        className="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800 cursor-nwse-resize z-10 hover:bg-blue-500 nodrag"
+        onMouseDown={onResizeStart}
+      />
+    </div>
+  );
+};
+
+const BaseNode = ({
+  id,
+  children,
+  minWidth,
+  minHeight,
+  className,
+  backgroundColor,
+}) => (
+  <ResizableNodeWrapper id={id} minWidth={minWidth} minHeight={minHeight}>
+    <div className={`h-full w-full ${className}`} style={{ backgroundColor }}>
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!w-2 !h-2 !bg-gray-500"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!w-2 !h-2 !bg-gray-500"
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-2 !h-2 !bg-gray-500"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!w-2 !h-2 !bg-gray-500"
+      />
+      {children}
+    </div>
+  </ResizableNodeWrapper>
+);
+
+const IconNode = ({
+  id,
+  data,
+  icon: Icon,
+  accentColor,
+  minWidth = 120,
+  minHeight = 100,
+}) => (
+  <BaseNode
+    id={id}
+    minWidth={minWidth}
+    minHeight={minHeight}
+    className="border-2 border-gray-300 dark:border-gray-600 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center justify-center text-center"
+    backgroundColor={data.backgroundColor || "white"}
+  >
+    <Icon
+      className={`w-10 h-10 mb-2 ${accentColor}`}
+      style={{ color: data.textColor || undefined }}
+    />
+    <EditableLabel
+      initialValue={data.label}
+      nodeId={id}
+      dataKey="label"
+      className="text-sm font-semibold"
+      style={{ color: data.textColor || "inherit" }}
+    />
+  </BaseNode>
+);
+
+const CloudNode = ({ id, data }) => (
+  <BaseNode
+    id={id}
+    minWidth={140}
+    minHeight={80}
+    className="border-2 border-gray-300 dark:border-gray-600 rounded-t-full rounded-b-3xl p-4 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow"
+    backgroundColor={data.backgroundColor || "white"}
+  >
+    <Cloud
+      className="w-8 h-8 mr-2"
+      style={{ color: data.textColor || "#6b7280" }}
+    />
+    <EditableLabel
+      initialValue={data.label}
+      nodeId={id}
+      dataKey="label"
+      className="text-sm font-semibold"
+      style={{ color: data.textColor || "inherit" }}
+    />
+  </BaseNode>
+);
+
+const TextAnnotationNode = ({ data, id }) => (
+  <BaseNode
+    id={id}
+    minWidth={100}
+    minHeight={40}
+    className="flex items-center justify-center"
+    backgroundColor={data.backgroundColor || "transparent"}
+  >
+    <EditableLabel
+      initialValue={data.label}
+      nodeId={id}
+      dataKey="label"
+      className="text-base p-2"
+      style={{ color: data.textColor || "inherit" }}
+    />
+  </BaseNode>
+);
+
+const DataIONode = ({ data, id }) => (
+  <BaseNode
+    id={id}
+    minWidth={140}
+    minHeight={70}
+    backgroundColor={data.backgroundColor || "transparent"}
+  >
+    <div className="relative h-full w-full flex items-center justify-center p-6">
+      <div
+        className="absolute inset-0 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 transform -skew-x-12 shadow-sm"
+        style={{ backgroundColor: data.backgroundColor || "inherit" }}
+      />
+      <div className="relative z-10">
+        <EditableLabel
+          initialValue={data.label}
+          nodeId={id}
+          dataKey="label"
+          className="font-medium"
+          style={{ color: data.textColor || "inherit" }}
+        />
+      </div>
+    </div>
+  </BaseNode>
+);
+
+const TerminatorNode = ({ data, id }) => (
+  <BaseNode
+    id={id}
+    minWidth={140}
+    minHeight={60}
+    className="border-2 border-gray-300 dark:border-gray-600 rounded-full p-4 flex items-center justify-center shadow-sm hover:shadow-md"
+    backgroundColor={data.backgroundColor || "white"}
+  >
+    <EditableLabel
+      initialValue={data.label}
+      nodeId={id}
+      dataKey="label"
+      className="font-medium"
+      style={{ color: data.textColor || "inherit" }}
+    />
+  </BaseNode>
+);
+
+const ClassNodeDisplay = ({ data, id }) => (
+  <BaseNode
+    id={id}
+    minWidth={220}
+    minHeight={150}
+    className="border-2 border-gray-400 dark:border-gray-500 rounded-lg shadow-md overflow-hidden flex flex-col"
+    backgroundColor={data.backgroundColor || "#f9fafb"}
+  >
+    <div
+      className="p-2 bg-gray-200 dark:bg-gray-700 border-b-2 border-gray-400 dark:border-gray-500 text-center font-bold"
+      style={{ color: data.textColor || "#1f2937" }}
+    >
+      {data.className || "ClassName"}
+    </div>
+    <div
+      className="p-2 text-sm border-b border-gray-300 dark:border-gray-600"
+      style={{ color: data.textColor || "inherit" }}
+    >
+      {data.attributes?.map((attr, i) => (
+        <div key={i}>{attr}</div>
+      ))}
+    </div>
+    <div className="p-2 text-sm" style={{ color: data.textColor || "inherit" }}>
+      {data.methods?.map((method, i) => (
+        <div key={i}>{method}</div>
+      ))}
+    </div>
+  </BaseNode>
+);
+
+const LifelineNode = ({ data, id }) => (
+  <BaseNode
+    id={id}
+    minWidth={100}
+    minHeight={200}
+    className="border-2 border-gray-300 dark:border-gray-600 rounded-lg p-2 flex flex-col items-center justify-between shadow-sm"
+    backgroundColor={data.backgroundColor || "white"}
+  >
+    <EditableLabel
+      initialValue={data.label}
+      nodeId={id}
+      dataKey="label"
+      className="text-sm font-semibold"
+      style={{ color: data.textColor || "inherit" }}
+    />
+    <div className="w-1 h-full bg-gray-400 dark:bg-gray-500" />
+  </BaseNode>
+);
+
+const MessageNode = ({ data, id }) => (
+  <BaseNode
+    id={id}
+    minWidth={120}
+    minHeight={40}
+    className="border-2 border-gray-300 dark:border-gray-600 rounded-md p-2 flex items-center justify-center shadow-sm"
+    backgroundColor={data.backgroundColor || "white"}
+  >
+    <ArrowRight
+      className="w-5 h-5 mr-2"
+      style={{ color: data.textColor || "#4b5563" }}
+    />
+    <EditableLabel
+      initialValue={data.label}
+      nodeId={id}
+      dataKey="label"
+      className="text-sm"
+      style={{ color: data.textColor || "inherit" }}
+    />
+  </BaseNode>
+);
+
+const ToolbarButton = ({
+  title,
+  nodeType,
+  onClick,
+  onDragStart,
+  icon: Icon,
+}) => (
+  <button
+    title={title}
+    onClick={onClick}
+    onDragStart={onDragStart ? (e) => onDragStart(e, nodeType) : undefined}
+    draggable={!!onDragStart}
+    className="flex flex-col items-center p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200 space-y-1 w-full"
+  >
+    <Icon className="w-6 h-6" />
+    <span className="text-xs text-center">{title}</span>
+  </button>
+);
+
+const ColorPanel = ({ label, value, onChange }) => {
+  const colors = [
+    { name: "White", value: "#ffffff" },
+    { name: "Black", value: "#000000" },
+    { name: "Red", value: "#ef4444" },
+    { name: "Blue", value: "#3b82f6" },
+    { name: "Green", value: "#10b981" },
+    { name: "Yellow", value: "#f59e0b" },
+    { name: "Purple", value: "#8b5cf6" },
+    { name: "Gray", value: "#6b7280" },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+        {label}
+      </label>
+      <div className="grid grid-cols-4 gap-2">
+        {colors.map((color) => (
+          <button
+            key={color.value}
+            onClick={() => onChange(color.value)}
+            className="w-8 h-8 rounded-full border border-gray-300 dark:border-gray-600"
+            style={{ backgroundColor: color.value }}
+            title={color.name}
+          />
+        ))}
+      </div>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-10 mt-1 border border-gray-300 dark:border-gray-600 rounded-md"
+      />
+    </div>
+  );
+};
+
+const InspectorPanel = ({ onDeleteNode }) => {
+  const { selectedNode, setSelectedNode } = useContext(SelectedNodeContext);
+  const setNodes = useContext(NodeUpdaterContext);
+
+  if (!selectedNode) {
+    return (
+      <div className="p-4 text-sm text-gray-500 dark:text-gray-400">
+        Select a node to inspect its properties.
+      </div>
+    );
+  }
+
+  const updateNodeData = (key, value) => {
+    if (!setNodes) return;
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === selectedNode.id
+          ? { ...n, data: { ...n.data, [key]: value } }
+          : n
+      )
+    );
+    setSelectedNode((prev) => ({
+      ...prev,
+      data: { ...prev.data, [key]: value },
+    }));
+  };
+
+  const handleListChange = (type, index, value) => {
+    const items = [...selectedNode.data[type]];
+    items[index] = value;
+    updateNodeData(type, items);
+  };
+
+  const addListItem = (type) =>
+    updateNodeData(type, [...(selectedNode.data[type] || []), "New Item"]);
+  const removeListItem = (type, index) =>
+    updateNodeData(
+      type,
+      selectedNode.data[type].filter((_, i) => i !== index)
+    );
+
+  const handleDelete = () => {
+    onDeleteNode(selectedNode.id);
+    setSelectedNode(null);
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+          Node Properties
+        </h2>
+        <button
+          onClick={handleDelete}
+          className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-600 transition-colors"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+      <div>
+        <label className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+          Label
+        </label>
+        <input
+          type="text"
+          value={selectedNode.data.label || ""}
+          onChange={(e) => updateNodeData("label", e.target.value)}
+          className="w-full p-2 mt-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+        />
+      </div>
+      <ColorPanel
+        label="Text Color"
+        value={selectedNode.data.textColor || "#000000"}
+        onChange={(value) => updateNodeData("textColor", value)}
+      />
+      <ColorPanel
+        label="Background Color"
+        value={selectedNode.data.backgroundColor || "#ffffff"}
+        onChange={(value) => updateNodeData("backgroundColor", value)}
+      />
+      {selectedNode.type === "classNode" && (
+        <>
+          <div>
+            <label className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+              Class Name
+            </label>
+            <input
+              type="text"
+              value={selectedNode.data.className || ""}
+              onChange={(e) => updateNodeData("className", e.target.value)}
+              className="w-full p-2 mt-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+            />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+              Attributes
+            </h3>
+            {selectedNode.data.attributes?.map((attr, i) => (
+              <div key={i} className="flex items-center space-x-1">
+                <input
+                  type="text"
+                  value={attr}
+                  onChange={(e) =>
+                    handleListChange("attributes", i, e.target.value)
+                  }
+                  className="w-full p-1 border border-gray-200 dark:border-gray-600 rounded-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                />
+                <button
+                  onClick={() => removeListItem("attributes", i)}
+                  className="text-gray-400 hover:text-red-600 dark:hover:text-red-500"
+                >
+                  <Minus size={16} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => addListItem("attributes")}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              <Plus size={14} className="inline-block" /> Add Attribute
+            </button>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+              Methods
+            </h3>
+            {selectedNode.data.methods?.map((method, i) => (
+              <div key={i} className="flex items-center space-x-1">
+                <input
+                  type="text"
+                  value={method}
+                  onChange={(e) =>
+                    handleListChange("methods", i, e.target.value)
+                  }
+                  className="w-full p-1 border border-gray-200 dark:border-gray-600 rounded-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                />
+                <button
+                  onClick={() => removeListItem("methods", i)}
+                  className="text-gray-400 hover:text-red-600 dark:hover:text-red-500"
+                >
+                  <Minus size={16} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => addListItem("methods")}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              <Plus size={14} className="inline-block" /> Add Method
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const nodeTypes = {
+  rectangle: ({ id, data }) => (
+    <NodeUpdaterContext.Provider value={useContext(NodeUpdaterContext)}>
+      <BaseNode
+        id={id}
+        minWidth={120}
+        minHeight={60}
+        className="border-2 border-gray-300 dark:border-gray-600 rounded-md p-4 flex items-center justify-center shadow-sm"
+        backgroundColor={data.backgroundColor || "white"}
+      >
+        <EditableLabel
+          initialValue={data.label}
+          nodeId={id}
+          dataKey="label"
+          style={{ color: data.textColor || "inherit" }}
+        />
+      </BaseNode>
+    </NodeUpdaterContext.Provider>
+  ),
+  circle: ({ id, data }) => (
+    <NodeUpdaterContext.Provider value={useContext(NodeUpdaterContext)}>
+      <BaseNode
+        id={id}
+        minWidth={80}
+        minHeight={80}
+        className="border-2 border-gray-300 dark:border-gray-600 rounded-full p-4 flex items-center justify-center shadow-sm"
+        backgroundColor={data.backgroundColor || "white"}
+      >
+        <EditableLabel
+          initialValue={data.label}
+          nodeId={id}
+          dataKey="label"
+          style={{ color: data.textColor || "inherit" }}
+        />
+      </BaseNode>
+    </NodeUpdaterContext.Provider>
+  ),
+  diamond: ({ id, data }) => (
+    <NodeUpdaterContext.Provider value={useContext(NodeUpdaterContext)}>
+      <BaseNode
+        id={id}
+        minWidth={120}
+        minHeight={80}
+        className="border-2 border-gray-300 dark:border-gray-600 rotate-45 p-4 flex items-center justify-center shadow-sm"
+        backgroundColor={data.backgroundColor || "white"}
+      >
+        <div className="-rotate-45">
+          <EditableLabel
+            initialValue={data.label}
+            nodeId={id}
+            dataKey="label"
+            style={{ color: data.textColor || "inherit" }}
+          />
+        </div>
+      </BaseNode>
+    </NodeUpdaterContext.Provider>
+  ),
+  cloud: CloudNode,
+  text: TextAnnotationNode,
+  terminator: TerminatorNode,
+  dataIO: DataIONode,
+  classNode: ClassNodeDisplay,
+  lifeline: LifelineNode,
+  message: MessageNode,
+  awsEC2: (p) => (
+    <IconNode {...p} icon={Server} accentColor="text-orange-500" />
+  ),
+  awsS3: (p) => (
+    <IconNode {...p} icon={HardDrive} accentColor="text-orange-500" />
+  ),
+  awsLambda: (p) => (
+    <IconNode {...p} icon={Zap} accentColor="text-orange-500" />
+  ),
+  awsRDS: (p) => (
+    <IconNode {...p} icon={Database} accentColor="text-orange-500" />
+  ),
+  awsVPC: (p) => (
+    <IconNode {...p} icon={VPCIcon} accentColor="text-orange-500" />
+  ),
+  awsDynamoDB: (p) => (
+    <IconNode {...p} icon={DynamoDBIcon} accentColor="text-orange-500" />
+  ),
+  azureVM: (p) => <IconNode {...p} icon={Server} accentColor="text-blue-500" />,
+  azureBlob: (p) => (
+    <IconNode {...p} icon={HardDrive} accentColor="text-blue-500" />
+  ),
+  azureCosmosDB: (p) => (
+    <IconNode {...p} icon={Database} accentColor="text-blue-500" />
+  ),
+  azureFunction: (p) => (
+    <IconNode {...p} icon={Zap} accentColor="text-blue-500" />
+  ),
+  azureAppService: (p) => (
+    <IconNode {...p} icon={AppServiceIcon} accentColor="text-blue-500" />
+  ),
+  gcpCompute: (p) => <IconNode {...p} icon={Cpu} accentColor="text-blue-700" />,
+  gcpStorage: (p) => (
+    <IconNode {...p} icon={HardDrive} accentColor="text-blue-700" />
+  ),
+  actor: (p) => (
+    <IconNode
+      {...p}
+      icon={Users}
+      accentColor="text-purple-500"
+      minWidth={80}
+      minHeight={80}
+    />
+  ),
+  useCase: (p) => (
+    <IconNode {...p} icon={Circle} accentColor="text-purple-500" />
+  ),
+  decision: (p) => (
+    <IconNode {...p} icon={Diamond} accentColor="text-green-500" />
+  ),
+  action: (p) => <IconNode {...p} icon={Square} accentColor="text-green-500" />,
+  server: (p) => <IconNode {...p} icon={Server} accentColor="text-gray-500" />,
+  database: (p) => (
+    <IconNode {...p} icon={Database} accentColor="text-gray-500" />
+  ),
+  network: (p) => <IconNode {...p} icon={Globe} accentColor="text-gray-500" />,
+  loadBalancer: (p) => (
+    <IconNode {...p} icon={ServerCog} accentColor="text-teal-500" />
+  ),
+  apiGateway: (p) => (
+    <IconNode {...p} icon={GitMerge} accentColor="text-violet-500" />
+  ),
+  firewall: (p) => <IconNode {...p} icon={Shield} accentColor="text-red-500" />,
+  cache: (p) => <IconNode {...p} icon={Database} accentColor="text-pink-500" />,
+  queue: (p) => <IconNode {...p} icon={Rabbit} accentColor="text-orange-500" />,
+  user: (p) => (
+    <IconNode
+      {...p}
+      minWidth={80}
+      minHeight={80}
+      icon={User}
+      accentColor="text-sky-500"
+    />
+  ),
+  gateway: (p) => (
+    <IconNode {...p} icon={GitMerge} accentColor="text-indigo-500" />
+  ),
+  microservice: (p) => (
+    <IconNode {...p} icon={Box} accentColor="text-cyan-500" />
+  ),
+  container: (p) => (
+    <IconNode {...p} icon={ContainerIcon} accentColor="text-green-500" />
+  ),
+};
+
+export const DiagramGenerator = () => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodeIdCounter, setNodeIdCounter] = useState(1);
+  const [reactFlowInstance, setReactFlowInstance] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [theme, setTheme] = useState("light");
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
+
+  const saveToHistory = useCallback(() => {
+    setHistory((prev) => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push({ nodes: [...nodes], edges: [...edges] });
+      return newHistory.length > 20 ? newHistory.slice(-20) : newHistory;
+    });
+    setHistoryIndex((prev) => prev + 1);
+  }, [nodes, edges, historyIndex]);
+
+  const onNodesChangeCustom = useCallback(
+    (changes) => {
+      onNodesChange(changes);
+      saveToHistory();
+    },
+    [onNodesChange, saveToHistory]
+  );
+
+  const onEdgesChangeCustom = useCallback(
+    (changes) => {
+      onEdgesChange(changes);
+      saveToHistory();
+    },
+    [onEdgesChange, saveToHistory]
+  );
+
+  const onConnect = useCallback(
+    (p) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...p,
+            style: {
+              strokeWidth: 2,
+              stroke: theme === "dark" ? "#cbd5e1" : "#64748b",
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: theme === "dark" ? "#cbd5e1" : "#64748b",
+            },
+          },
+          eds
+        )
+      );
+      saveToHistory();
+    },
+    [setEdges, saveToHistory, theme]
+  );
+
+  const onDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (e) => {
+      e.preventDefault();
+      const type = e.dataTransfer.getData("application/reactflow");
+      if (!type || !reactFlowInstance) return;
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: e.clientX,
+        y: e.clientY,
+      });
+
+      let data = { label: type };
+      if (type === "classNode")
+        data = {
+          className: "ClassName",
+          attributes: ["+ attr: string"],
+          methods: ["+ method(): void"],
+        };
+      else if (type === "text") data.label = "Annotation Text";
+
+      const newNode = {
+        id: `node_${nodeIdCounter}`,
+        type,
+        position,
+        data,
+        style: {
+          width: type === "lifeline" ? 100 : 150,
+          height:
+            type === "classNode"
+              ? 180
+              : type === "text"
+              ? 60
+              : type === "lifeline"
+              ? 200
+              : type === "cloud"
+              ? 100
+              : 80,
+        },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+      setNodeIdCounter((p) => p + 1);
+      saveToHistory();
+    },
+    [reactFlowInstance, nodeIdCounter, setNodes, saveToHistory]
+  );
+
+  const onNodeClick = useCallback((_, node) => setSelectedNode(node), []);
+  const onPaneClick = useCallback(() => setSelectedNode(null), []);
+
+  const onDragStart = (e, nodeType) => {
+    e.dataTransfer.setData("application/reactflow", nodeType);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const deleteNode = useCallback(
+    (nodeId) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) =>
+        eds.filter((e) => e.source !== nodeId && e.target !== nodeId)
+      );
+      saveToHistory();
+    },
+    [setNodes, setEdges, saveToHistory]
+  );
+
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      setHistoryIndex((prev) => prev - 1);
+      const { nodes: prevNodes, edges: prevEdges } = history[historyIndex - 1];
+      setNodes(prevNodes);
+      setEdges(prevEdges);
+    }
+  }, [history, historyIndex, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex((prev) => prev + 1);
+      const { nodes: nextNodes, edges: nextEdges } = history[historyIndex + 1];
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+    }
+  }, [history, historyIndex, setNodes, setEdges]);
+
+  const clearCanvas = useCallback(() => {
+    setNodes([]);
+    setEdges([]);
+    setNodeIdCounter(1);
+    setHistory([]);
+    setHistoryIndex(-1);
+    setSelectedNode(null);
+  }, [
+    setNodes,
+    setEdges,
+    setNodeIdCounter,
+    setHistory,
+    setHistoryIndex,
+    setSelectedNode,
+  ]);
+
+  const exportDiagram = useCallback(() => {
+    const diagram = { nodes, edges };
+    const blob = new Blob([JSON.stringify(diagram, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "diagram.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [nodes, edges]);
+
+  const importDiagram = useCallback(
+    (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const { nodes: importedNodes, edges: importedEdges } = JSON.parse(
+            event.target.result
+          );
+          setNodes(importedNodes);
+          setEdges(importedEdges);
+          setNodeIdCounter(
+            Math.max(
+              ...(importedNodes.map((n) => parseInt(n.id.split("_")[1])) + 1)
+            )
+          );
+          saveToHistory();
+        } catch (err) {
+          console.error("Invalid diagram file", err);
+        }
+      };
+      reader.readAsText(file);
+    },
+    [setNodes, setEdges, setNodeIdCounter, saveToHistory]
+  );
+
+  const exportImage = useCallback(() => {
+    const node = document.querySelector(".react-flow__viewport");
+    domtoimage.toPng(node).then((dataUrl) => {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = "diagram.png";
+      a.click();
+    });
+  }, []);
+
+  const zoomIn = useCallback(
+    () => reactFlowInstance?.zoomIn(),
+    [reactFlowInstance]
+  );
+  const zoomOut = useCallback(
+    () => reactFlowInstance?.zoomOut(),
+    [reactFlowInstance]
+  );
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      <div
+        className={`w-full h-screen flex font-sans ${
+          theme === "dark" ? "dark bg-gray-900" : "bg-gray-100"
+        }`}
+      >
+        <aside className="w-64 bg-white dark:bg-gray-800 shadow-lg border-r border-gray-200 dark:border-gray-700 flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-200">
+              Diagram Tools
+            </h1>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            >
+              {theme === "light" ? (
+                <Moon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              ) : (
+                <Sun className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              )}
+            </button>
+          </div>
+          <div className="flex-grow overflow-y-auto p-4">
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  General
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Text"
+                    nodeType="text"
+                    onDragStart={onDragStart}
+                    icon={Type}
+                  />
+                  <ToolbarButton
+                    title="Rectangle"
+                    nodeType="rectangle"
+                    onDragStart={onDragStart}
+                    icon={Square}
+                  />
+                  <ToolbarButton
+                    title="Circle"
+                    nodeType="circle"
+                    onDragStart={onDragStart}
+                    icon={Circle}
+                  />
+                  <ToolbarButton
+                    title="Diamond"
+                    nodeType="diamond"
+                    onDragStart={onDragStart}
+                    icon={Diamond}
+                  />
+                  <ToolbarButton
+                    title="Cloud"
+                    nodeType="cloud"
+                    onDragStart={onDragStart}
+                    icon={Cloud}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  Flowchart
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Start/End"
+                    nodeType="terminator"
+                    onDragStart={onDragStart}
+                    icon={Circle}
+                  />
+                  <ToolbarButton
+                    title="Process"
+                    nodeType="rectangle"
+                    onDragStart={onDragStart}
+                    icon={Square}
+                  />
+                  <ToolbarButton
+                    title="Decision"
+                    nodeType="diamond"
+                    onDragStart={onDragStart}
+                    icon={Diamond}
+                  />
+                  <ToolbarButton
+                    title="Data I/O"
+                    nodeType="dataIO"
+                    onDragStart={onDragStart}
+                    icon={FileInput}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  System Design
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="User"
+                    nodeType="user"
+                    onDragStart={onDragStart}
+                    icon={User}
+                  />
+                  <ToolbarButton
+                    title="Server"
+                    nodeType="server"
+                    onDragStart={onDragStart}
+                    icon={Server}
+                  />
+                  <ToolbarButton
+                    title="Database"
+                    nodeType="database"
+                    onDragStart={onDragStart}
+                    icon={Database}
+                  />
+                  <ToolbarButton
+                    title="Network"
+                    nodeType="network"
+                    onDragStart={onDragStart}
+                    icon={Globe}
+                  />
+                  <ToolbarButton
+                    title="Load Balancer"
+                    nodeType="loadBalancer"
+                    onDragStart={onDragStart}
+                    icon={ServerCog}
+                  />
+                  <ToolbarButton
+                    title="API Gateway"
+                    nodeType="apiGateway"
+                    onDragStart={onDragStart}
+                    icon={GitMerge}
+                  />
+                  <ToolbarButton
+                    title="Firewall"
+                    nodeType="firewall"
+                    onDragStart={onDragStart}
+                    icon={Shield}
+                  />
+                  <ToolbarButton
+                    title="Cache"
+                    nodeType="cache"
+                    onDragStart={onDragStart}
+                    icon={Database}
+                  />
+                  <ToolbarButton
+                    title="Queue"
+                    nodeType="queue"
+                    onDragStart={onDragStart}
+                    icon={Rabbit}
+                  />
+                  <ToolbarButton
+                    title="Gateway"
+                    nodeType="gateway"
+                    onDragStart={onDragStart}
+                    icon={GitMerge}
+                  />
+                  <ToolbarButton
+                    title="Microservice"
+                    nodeType="microservice"
+                    onDragStart={onDragStart}
+                    icon={Box}
+                  />
+                  <ToolbarButton
+                    title="Container"
+                    nodeType="container"
+                    onDragStart={onDragStart}
+                    icon={ContainerIcon}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  AWS
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="EC2"
+                    nodeType="awsEC2"
+                    onDragStart={onDragStart}
+                    icon={Server}
+                  />
+                  <ToolbarButton
+                    title="S3"
+                    nodeType="awsS3"
+                    onDragStart={onDragStart}
+                    icon={HardDrive}
+                  />
+                  <ToolbarButton
+                    title="Lambda"
+                    nodeType="awsLambda"
+                    onDragStart={onDragStart}
+                    icon={Zap}
+                  />
+                  <ToolbarButton
+                    title="RDS"
+                    nodeType="awsRDS"
+                    onDragStart={onDragStart}
+                    icon={Database}
+                  />
+                  <ToolbarButton
+                    title="VPC"
+                    nodeType="awsVPC"
+                    onDragStart={onDragStart}
+                    icon={VPCIcon}
+                  />
+                  <ToolbarButton
+                    title="DynamoDB"
+                    nodeType="awsDynamoDB"
+                    onDragStart={onDragStart}
+                    icon={DynamoDBIcon}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  Azure
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Virtual Machine"
+                    nodeType="azureVM"
+                    onDragStart={onDragStart}
+                    icon={Server}
+                  />
+                  <ToolbarButton
+                    title="Blob Storage"
+                    nodeType="azureBlob"
+                    onDragStart={onDragStart}
+                    icon={HardDrive}
+                  />
+                  <ToolbarButton
+                    title="Cosmos DB"
+                    nodeType="azureCosmosDB"
+                    onDragStart={onDragStart}
+                    icon={Database}
+                  />
+                  <ToolbarButton
+                    title="Function"
+                    nodeType="azureFunction"
+                    onDragStart={onDragStart}
+                    icon={Zap}
+                  />
+                  <ToolbarButton
+                    title="App Service"
+                    nodeType="azureAppService"
+                    onDragStart={onDragStart}
+                    icon={AppServiceIcon}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  GCP
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Compute Engine"
+                    nodeType="gcpCompute"
+                    onDragStart={onDragStart}
+                    icon={Cpu}
+                  />
+                  <ToolbarButton
+                    title="Cloud Storage"
+                    nodeType="gcpStorage"
+                    onDragStart={onDragStart}
+                    icon={HardDrive}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  UML
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Class"
+                    nodeType="classNode"
+                    onDragStart={onDragStart}
+                    icon={Box}
+                  />
+                  <ToolbarButton
+                    title="Actor"
+                    nodeType="actor"
+                    onDragStart={onDragStart}
+                    icon={Users}
+                  />
+                  <ToolbarButton
+                    title="Use Case"
+                    nodeType="useCase"
+                    onDragStart={onDragStart}
+                    icon={Circle}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  Activity Diagram
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Action"
+                    nodeType="action"
+                    onDragStart={onDragStart}
+                    icon={Square}
+                  />
+                  <ToolbarButton
+                    title="Decision"
+                    nodeType="decision"
+                    onDragStart={onDragStart}
+                    icon={Diamond}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  Sequence Diagram
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Lifeline"
+                    nodeType="lifeline"
+                    onDragStart={onDragStart}
+                    icon={Users}
+                  />
+                  <ToolbarButton
+                    title="Message"
+                    nodeType="message"
+                    onDragStart={onDragStart}
+                    icon={ArrowRight}
+                  />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                  Actions
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToolbarButton
+                    title="Export JSON"
+                    onClick={exportDiagram}
+                    icon={Download}
+                  />
+                  <label className="flex flex-col items-center p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200 space-y-1 w-full cursor-pointer">
+                    <ToolbarButton
+                      title="Import JSON"
+                      onClick={() =>
+                        document.getElementById("import-json").click()
+                      }
+                      icon={Upload}
+                    />
+                    <input
+                      id="import-json"
+                      type="file"
+                      accept=".json"
+                      onChange={importDiagram}
+                      className="hidden"
+                    />
+                  </label>
+                  <ToolbarButton
+                    title="Export PNG"
+                    onClick={exportImage}
+                    icon={Download}
+                  />
+                  <ToolbarButton
+                    title="Clear Canvas"
+                    onClick={clearCanvas}
+                    icon={Trash2}
+                  />
+                  <ToolbarButton title="Undo" onClick={undo} icon={RotateCcw} />
+                  <ToolbarButton title="Redo" onClick={redo} icon={RotateCw} />
+                  <ToolbarButton
+                    title="Zoom In"
+                    onClick={zoomIn}
+                    icon={ZoomIn}
+                  />
+                  <ToolbarButton
+                    title="Zoom Out"
+                    onClick={zoomOut}
+                    icon={ZoomOut}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <main className="flex-1 relative">
+          <NodeUpdaterContext.Provider value={setNodes}>
+            <SelectedNodeContext.Provider
+              value={{ selectedNode, setSelectedNode }}
+            >
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChangeCustom}
+                onEdgesChange={onEdgesChangeCustom}
+                onConnect={onConnect}
+                onInit={setReactFlowInstance}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                fitView
+              >
+                <Background
+                  variant="dots"
+                  color={theme === "dark" ? "#6b7280" : "#e2e8f0"}
+                  gap={16}
+                />
+                <Controls />
+                <MiniMap />
+              </ReactFlow>
+            </SelectedNodeContext.Provider>
+          </NodeUpdaterContext.Provider>
+        </main>
+        <aside
+          className={`bg-white dark:bg-gray-800 shadow-lg border-l border-gray-200 dark:border-gray-700 transition-all duration-300 ${
+            isInspectorOpen ? "w-80" : "w-12"
+          }`}
+        >
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            {isInspectorOpen && (
+              <h1 className="text-xl font-bold text-gray-800 dark:text-gray-200">
+                Inspector
+              </h1>
+            )}
+            <button
+              onClick={() => setIsInspectorOpen(!isInspectorOpen)}
+              className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+            >
+              {isInspectorOpen ? (
+                <ChevronRight size={20} />
+              ) : (
+                <ChevronLeft size={20} />
+              )}
+            </button>
+          </div>
+          {isInspectorOpen && (
+            <NodeUpdaterContext.Provider value={setNodes}>
+              <SelectedNodeContext.Provider
+                value={{ selectedNode, setSelectedNode }}
+              >
+                <InspectorPanel onDeleteNode={deleteNode} />
+              </SelectedNodeContext.Provider>
+            </NodeUpdaterContext.Provider>
+          )}
+        </aside>
+        <style jsx global>{`
+          .react-flow__node.selected > div {
+            outline: 2px solid #3b82f6;
+            border-radius: 6px;
+          }
+          .react-flow__controls {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .react-flow__minimap {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .dark .react-flow__controls,
+          .dark .react-flow__minimap {
+            background: #1f2937;
+            color: #e5e7eb;
+          }
+        `}</style>
+      </div>
+    </ThemeContext.Provider>
+  );
+};
