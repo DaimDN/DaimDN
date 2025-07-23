@@ -1,0 +1,194 @@
+import os
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from torch.optim import AdamW
+import pandas as pd
+import time
+import signal
+from torch.cuda.amp import GradScaler, autocast
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+class CodeDataset(Dataset):
+    def __init__(self, data_dir, tokenizer, max_length=32):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.data = []
+        print("Loading dataset (first 100 entries)...")
+        csv_file = os.path.join(data_dir, 'data.csv')
+        try:
+            df = pd.read_csv(csv_file, nrows=100)
+            for idx, row in df.iterrows():
+                if pd.isna(row.get('prompt')) or pd.isna(row.get('response')):
+                    print(f"Warning: Skipping row {idx} with missing prompt/response")
+                    continue
+                text = f"Prompt: {row['prompt']}\nResponse: {row['response']}"
+                self.data.append(text)
+            print(f"Loaded {len(self.data)} samples from {csv_file}")
+            if not self.data:
+                raise ValueError("No valid data loaded from dataset")
+        except Exception as e:
+            print(f"Error loading dataset: {e}")
+            raise
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        text = self.data[idx]
+        encoding = self.tokenizer(text, return_tensors='pt', max_length=self.max_length,
+                                truncation=True, padding='max_length')
+        return encoding.input_ids.squeeze(), encoding.attention_mask.squeeze()
+
+def save_model(model, tokenizer, output_dir, model_name="model"):
+    print("Saving model...")
+    os.makedirs(output_dir, exist_ok=True)
+    model.save_pretrained(os.path.join(output_dir, model_name))
+    tokenizer.save_pretrained(os.path.join(output_dir, model_name))
+    print(f"Model saved to {output_dir}/{model_name}")
+
+def load_model(model_dir, model_name="model"):
+    print("Loading existing trained model...")
+    try:
+        model_path = os.path.join(model_dir, model_name)
+        model = GPT2LMHeadModel.from_pretrained(model_path).to(device)
+        tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+        print("Existing model loaded successfully")
+        return model, tokenizer
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        return None, None
+
+def model_exists(model_dir, model_name="model"):
+    """Check if trained model exists"""
+    model_path = os.path.join(model_dir, model_name)
+    # Check if both model files and tokenizer files exist
+    config_file = os.path.join(model_path, "config.json")
+    model_file = os.path.join(model_path, "pytorch_model.bin")
+    tokenizer_file = os.path.join(model_path, "tokenizer.json")
+
+    return (os.path.exists(config_file) and
+            (os.path.exists(model_file) or os.path.exists(os.path.join(model_path, "model.safetensors"))) and
+            os.path.exists(tokenizer_file))
+
+def generate_code(model, tokenizer, prompt, max_length=32):
+    model.eval()
+    input_text = f"Prompt: {prompt}\nResponse:"
+    inputs = tokenizer(input_text, return_tensors='pt', truncation=True, padding=True).to(device)
+    with torch.no_grad():
+        outputs = model.generate(
+            input_ids=inputs['input_ids'],
+            attention_mask=inputs['attention_mask'],
+            max_length=max_length,
+            num_return_sequences=1,
+            temperature=0.7,
+            top_p=0.9,
+            do_sample=True
+        )
+    generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return generated.split("Response:")[1].strip() if "Response:" in generated else generated
+
+def train_model(data_dir, output_dir, epochs=1, batch_size=16, max_length=32, model_name="model"):
+    print("Training new model...")
+    print("Loading pretrained GPT-2 model...")
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    tokenizer.pad_token = tokenizer.eos_token
+    model = GPT2LMHeadModel.from_pretrained('gpt2').to(device)
+    print(f"Model loaded with {sum(p.numel() for p in model.parameters())} parameters")
+
+    dataset = CodeDataset(data_dir, tokenizer, max_length)
+    if not dataset:
+        print("No data loaded. Aborting training.")
+        return None, None
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+
+    optimizer = AdamW(model.parameters(), lr=5e-5)
+    scaler = GradScaler()  # For mixed precision
+
+    print(f"Starting training for {epochs} epoch(s)...")
+    model.train()
+    start_time = time.time()
+
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Training batch took too long, likely stuck!")
+
+    signal.signal(signal.SIGALRM, timeout_handler)
+
+    for epoch in range(epochs):
+        total_loss = 0
+        batch_count = 0
+        for i, batch in enumerate(dataloader):
+            signal.alarm(10)
+            try:
+                input_ids, attention_mask = batch
+                input_ids = input_ids.to(device)
+                attention_mask = attention_mask.to(device)
+
+                optimizer.zero_grad()
+                with autocast():  # Mixed precision
+                    outputs = model(input_ids, attention_mask=attention_mask, labels=input_ids)
+                    loss = outputs.loss
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                total_loss += loss.item()
+                batch_count += 1
+                print(f"Epoch {epoch+1}/{epochs}, Batch {i+1}/{len(dataloader)}, Loss: {loss.item():.4f}")
+            except TimeoutError:
+                print(f"Batch {i+1} timed out after 10 seconds. Aborting training.")
+                return None, None
+            finally:
+                signal.alarm(0)
+
+        avg_loss = total_loss / batch_count if batch_count > 0 else 0
+        print(f"Epoch {epoch+1}/{epochs}, Avg Loss: {avg_loss:.4f}")
+
+    print(f"Training completed in {time.time() - start_time:.2f} seconds")
+    save_model(model, tokenizer, output_dir, model_name)
+    return model, tokenizer
+
+def main():
+    data_dir = './data'
+    output_dir = './trained_model'
+    model_name = 'model'
+
+    # Check if trained model exists
+    if model_exists(output_dir, model_name):
+        print("Found existing trained model. Loading...")
+        model, tokenizer = load_model(output_dir, model_name)
+        if model is None or tokenizer is None:
+            print("Failed to load existing model. Training new model...")
+            model, tokenizer = train_model(data_dir, output_dir, epochs=1, batch_size=16, max_length=32, model_name=model_name)
+    else:
+        print("No existing trained model found. Training new model...")
+        model, tokenizer = train_model(data_dir, output_dir, epochs=1, batch_size=16, max_length=32, model_name=model_name)
+
+    if model is None or tokenizer is None:
+        print("Model loading/training failed. Check dataset or device.")
+        return None, None
+
+    # Test the model
+    prompt = "Implement a function that extracts a specific string documents ."
+    print(f"\nGenerating response for prompt: {prompt}")
+    response = generate_code(model, tokenizer, prompt, max_length=200)
+    print(f"Model Generated Response: {response}")
+
+    return model, tokenizer
+
+if __name__ == '__main__':
+    model, tokenizer = main()
+
+    # Example: Interactive testing
+    if model is not None and tokenizer is not None:
+        print("\nModel ready! You can now test with custom prompts.")
+        # Uncomment the following lines for interactive testing:
+        # while True:
+        #     user_prompt = input("\nEnter a prompt (or 'quit' to exit): ")
+        #     if user_prompt.lower() == 'quit':
+        #         break
+        #     response = generate_code(model, tokenizer, user_prompt, max_length=100)
+        #     print(f"Generated Response: {response}")
